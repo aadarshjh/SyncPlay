@@ -29,4 +29,25 @@ router.get('/search', async (req, res) => {
     }
 });
 
+// Proxy lyrics.ovh to avoid CORS issues from the browser
+router.get('/lyrics', async (req, res) => {
+    try {
+        const { artist, title } = req.query;
+        if (!artist || !title) return res.status(400).json({ error: 'artist and title are required' });
+
+        const url = `https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(title)}`;
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.lyrics) {
+            res.json({ lyrics: data.lyrics });
+        } else {
+            res.json({ lyrics: null });
+        }
+    } catch (error) {
+        console.error('Lyrics Error:', error);
+        res.json({ lyrics: null });
+    }
+});
+
 export default router;
