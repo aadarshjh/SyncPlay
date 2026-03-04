@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import ReactPlayer from 'react-player';
-import { Play, Pause, SkipForward, Search, Volume2, VolumeX, MonitorPlay, Music2 } from 'lucide-react';
+import { Play, Pause, SkipForward, Search, Volume2, VolumeX, MonitorPlay, Music2, Repeat, Shuffle } from 'lucide-react';
 import { socket } from '../lib/socket';
 import { useRoomStore } from '../store/useRoomStore';
 import { useToast } from '../components/Toast';
@@ -17,7 +17,7 @@ const formatTime = (secs) => {
 };
 
 function Player({ isHost, roomId }) {
-    const { currentSong, isPlaying, currentTime } = useRoomStore();
+    const { currentSong, isPlaying, currentTime, queue, loopMode } = useRoomStore();
     const playerRef = useRef(null);
     const toast = useToast();
     const [searchInput, setSearchInput] = useState('');
@@ -39,6 +39,13 @@ function Player({ isHost, roomId }) {
             playerRef.current.seekTo(currentTime);
         }
     }, [currentTime]);
+
+    // Now Playing Toast
+    useEffect(() => {
+        if (currentSong && currentSong.title) {
+            toast(`🎵 Now Playing: ${currentSong.title}`, 'info');
+        }
+    }, [currentSong?.id]); // Depend on ID so it triggers properly
 
     const handlePlay = () => {
         if (!isHost) return;
@@ -75,6 +82,18 @@ function Player({ isHost, roomId }) {
         const newTime = parseFloat(e.target.value) * duration;
         playerRef.current?.seekTo(newTime);
         socket.emit('seek_time', { roomId, currentTime: newTime });
+    };
+
+    const handleShuffle = () => {
+        if (!isHost || queue.length < 2) return;
+        socket.emit('shuffle_queue', { roomId });
+        toast('Queue shuffled 🔀', 'success');
+    };
+
+    const handleToggleLoop = () => {
+        if (!isHost) return;
+        socket.emit('toggle_loop', { roomId, loopMode: !loopMode });
+        toast(`Repeat ${!loopMode ? 'enabled 🔁' : 'disabled'}`, 'info');
     };
 
     const fetchLyrics = async (title) => {
@@ -283,8 +302,20 @@ function Player({ isHost, roomId }) {
                         <p className="text-zinc-400 text-xs sm:text-sm">Added by {currentSong.addedBy}</p>
                     </div>
 
-                    {/* Play/Skip Buttons - Big tap areas for mobile */}
-                    <div className="flex justify-center items-center gap-6 sm:gap-8">
+                    {/* Controls Row (Shuffle, Play/Pause, Skip, Repeat) */}
+                    <div className="flex justify-center items-center gap-4 sm:gap-6">
+                        <button
+                            onClick={handleShuffle}
+                            disabled={!isHost || queue.length < 2}
+                            title="Shuffle Queue"
+                            className={`p-3 rounded-full flex items-center justify-center transition-all ${!isHost || queue.length < 2
+                                    ? 'text-zinc-700 cursor-not-allowed hidden sm:flex'
+                                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800 active:scale-95'
+                                }`}
+                        >
+                            <Shuffle className="w-5 h-5 sm:w-6 sm:h-6" />
+                        </button>
+
                         <button
                             onClick={isPlaying ? handlePause : handlePlay}
                             disabled={!isHost}
@@ -297,10 +328,25 @@ function Player({ isHost, roomId }) {
                         <button
                             onClick={handleSkip}
                             disabled={!isHost}
+                            title="Skip / Next"
                             className={`p-4 rounded-full flex items-center justify-center transition-all touch-target ${!isHost ? 'text-zinc-600 cursor-not-allowed' : 'text-zinc-400 hover:text-white hover:bg-zinc-800 active:scale-95'
                                 }`}
                         >
-                            <SkipForward className="w-6 h-6" />
+                            <SkipForward className="w-6 h-6 sm:w-7 sm:h-7" />
+                        </button>
+
+                        <button
+                            onClick={handleToggleLoop}
+                            disabled={!isHost}
+                            title={loopMode ? "Repeat is On" : "Repeat is Off"}
+                            className={`p-3 rounded-full flex items-center justify-center transition-all ${!isHost
+                                    ? 'text-zinc-700 cursor-not-allowed hidden sm:flex'
+                                    : loopMode
+                                        ? 'text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 active:scale-95'
+                                        : 'text-zinc-400 hover:text-white hover:bg-zinc-800 active:scale-95'
+                                }`}
+                        >
+                            <Repeat className="w-5 h-5 sm:w-6 sm:h-6" />
                         </button>
                     </div>
 

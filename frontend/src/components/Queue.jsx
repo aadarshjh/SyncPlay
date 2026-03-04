@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabase';
 import { useToast } from '../components/Toast';
 
 function Queue({ isHost, roomId }) {
-    const { queue, currentSong, username } = useRoomStore();
+    const { queue, history, currentSong, username } = useRoomStore();
     const fileInputRef = useRef(null);
     const [isUploading, setIsUploading] = useState(false);
     const toast = useToast();
@@ -81,40 +81,75 @@ function Queue({ isHost, roomId }) {
                 )}
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4">
-                <div className="flex items-center justify-between mb-4 mt-2">
-                    <h3 className="font-semibold text-sm text-zinc-300">Up Next</h3>
-                    <span className="text-xs font-mono bg-zinc-800 px-2 py-0.5 rounded text-zinc-400">{queue.length}</span>
+            <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-6">
+
+                {/* ── Active Queue ── */}
+                <div>
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="font-semibold text-sm text-zinc-300">Up Next</h3>
+                        <span className="text-xs font-mono bg-zinc-800 px-2 py-0.5 rounded text-zinc-400">{queue.length}</span>
+                    </div>
+
+                    {queue.length === 0 ? (
+                        <div className="text-center text-zinc-500 text-sm border border-dashed border-zinc-800 p-8 rounded-xl">
+                            Queue is empty. <br /> Use the search bar in the player to add YouTube links.
+                        </div>
+                    ) : (
+                        <ul className="space-y-2">
+                            {queue.map((song, idx) => (
+                                <li key={song.id} className="bg-zinc-900 border border-zinc-800/80 rounded-xl p-3 flex items-center justify-between group hover:border-zinc-700 transition-colors">
+                                    <div className="flex items-center gap-3 overflow-hidden">
+                                        <div className="text-xs text-zinc-600 font-mono w-4">{idx + 1}</div>
+                                        <div className="truncate">
+                                            <p className="text-sm font-medium text-zinc-200 truncate">{song.title}</p>
+                                            <p className="text-xs text-zinc-500 truncate">Added by {song.addedBy}</p>
+                                        </div>
+                                    </div>
+                                    {/* Host-only or song-owner remove button */}
+                                    {(isHost || song.addedBy === username) && (
+                                        <button
+                                            onClick={() => handleRemoveFromQueue(song.id)}
+                                            title="Remove from queue"
+                                            className="ml-2 flex-shrink-0 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all p-1 rounded-lg hover:bg-red-500/10"
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                </li>
+                            ))}
+                        </ul>
+                    )}
                 </div>
 
-                {queue.length === 0 ? (
-                    <div className="text-center text-zinc-500 text-sm mt-8 border border-dashed border-zinc-800 p-8 rounded-xl">
-                        Queue is empty. <br /> Use the search bar in the player to add YouTube links.
-                    </div>
-                ) : (
-                    <ul className="space-y-2">
-                        {queue.map((song, idx) => (
-                            <li key={song.id} className="bg-zinc-900 border border-zinc-800/80 rounded-xl p-3 flex items-center justify-between group hover:border-zinc-700 transition-colors">
-                                <div className="flex items-center gap-3 overflow-hidden">
-                                    <div className="text-xs text-zinc-600 font-mono w-4">{idx + 1}</div>
-                                    <div className="truncate">
-                                        <p className="text-sm font-medium text-zinc-200 truncate">{song.title}</p>
-                                        <p className="text-xs text-zinc-500 truncate">Added by {song.addedBy}</p>
+                {/* ── History ── */}
+                {history.length > 0 && (
+                    <div>
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="font-semibold text-sm text-zinc-400">Recently Played</h3>
+                            <span className="text-xs font-mono bg-zinc-800/50 px-2 py-0.5 rounded text-zinc-500">{history.length}</span>
+                        </div>
+                        <ul className="space-y-2 opacity-75">
+                            {history.map((song, idx) => (
+                                <li key={`${song.id}-${idx}`} className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-2.5 flex items-center justify-between group hover:bg-zinc-900 transition-colors">
+                                    <div className="flex items-center gap-3 overflow-hidden">
+                                        <div className="truncate">
+                                            <p className="text-xs font-medium text-zinc-400 truncate line-through decoration-zinc-600">{song.title}</p>
+                                        </div>
                                     </div>
-                                </div>
-                                {/* Host-only or song-owner remove button */}
-                                {(isHost || song.addedBy === username) && (
                                     <button
-                                        onClick={() => handleRemoveFromQueue(song.id)}
-                                        title="Remove from queue"
-                                        className="ml-2 flex-shrink-0 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all p-1 rounded-lg hover:bg-red-500/10"
+                                        onClick={() => {
+                                            socket.emit('add_to_queue', { roomId, song: { ...song, addedBy: username } });
+                                            toast('Re-added to queue', 'success');
+                                        }}
+                                        title="Re-add to queue"
+                                        className="text-[10px] font-semibold text-purple-400 bg-purple-500/10 px-2 py-1 rounded opacity-0 flex-shrink-0 group-hover:opacity-100 transition-opacity hover:bg-purple-500/20"
                                     >
-                                        <X className="w-4 h-4" />
+                                        + Re-Add
                                     </button>
-                                )}
-                            </li>
-                        ))}
-                    </ul>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
                 )}
             </div>
 

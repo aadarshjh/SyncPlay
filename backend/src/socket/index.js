@@ -16,9 +16,11 @@ export default function handleSockets(io) {
                     hostId: socket.id,
                     users: [],
                     queue: [],
+                    history: [],     // Recently played songs
                     currentSong: null,
                     isPlaying: false,
                     currentTime: 0,
+                    loopMode: false, // Repeat all active
                 };
             }
 
@@ -93,9 +95,21 @@ export default function handleSockets(io) {
             }
         });
 
-        // Queue Management: Skip song
+        // Queue Management: Skip song (also handles natural song end)
         socket.on('skip_song', ({ roomId }) => {
             if (rooms[roomId]) {
+                const prevSong = rooms[roomId].currentSong;
+                // Add finishing song to history (max 50) before picking next
+                if (prevSong) {
+                    rooms[roomId].history.unshift(prevSong);
+                    if (rooms[roomId].history.length > 50) rooms[roomId].history.pop();
+
+                    // If loop mode is ON, add the finished song to the END of the queue
+                    if (rooms[roomId].loopMode) {
+                        rooms[roomId].queue.push({ ...prevSong, id: Date.now().toString() + Math.random().toString(36).substr(2, 5) });
+                    }
+                }
+
                 if (rooms[roomId].queue.length > 0) {
                     rooms[roomId].currentSong = rooms[roomId].queue.shift(); // Play next
                     rooms[roomId].currentTime = 0;
@@ -106,6 +120,26 @@ export default function handleSockets(io) {
                     rooms[roomId].currentTime = 0;
                 }
                 io.to(roomId).emit('room_state', rooms[roomId]);
+            }
+        });
+
+        // Queue Management: Shuffle
+        socket.on('shuffle_queue', ({ roomId }) => {
+            if (rooms[roomId]) {
+                // Fisher-Yates shuffle algorithm
+                for (let i = rooms[roomId].queue.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [rooms[roomId].queue[i], rooms[roomId].queue[j]] = [rooms[roomId].queue[j], rooms[roomId].queue[i]];
+                }
+                io.to(roomId).emit('queue_updated', rooms[roomId].queue);
+            }
+        });
+
+        // Loop Toggle
+        socket.on('toggle_loop', ({ roomId, loopMode }) => {
+            if (rooms[roomId]) {
+                rooms[roomId].loopMode = loopMode;
+                io.to(roomId).emit('room_state', rooms[roomId]); // Broadcast full state to update loop UI
             }
         });
 
