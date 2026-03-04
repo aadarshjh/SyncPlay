@@ -6,6 +6,7 @@ import { useToast } from '../components/Toast';
 import { supabase } from '../lib/supabase';
 
 function Home() {
+    const { roomId } = useParams();
     const { username, user, setUsername: setStoreUsername } = useRoomStore((state) => ({
         username: state.username,
         user: state.user,
