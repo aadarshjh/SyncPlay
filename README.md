@@ -22,11 +22,18 @@ This architecture keeps state transient in the Socket.IO memory (great for low l
 1. Go to [Supabase](https://supabase.com) and create a free project.
 2. Go to **Storage**, and create a new public bucket called `music`.
 3. Go to **Project Settings -> API** and copy your `Project URL` and `anon public key`.
-4. In the `frontend` directory, create a `.env` file:
+4. In the `frontend` directory, create a `.env` file for local development:
    ```env
    VITE_SUPABASE_URL=your_project_url
    VITE_SUPABASE_ANON_KEY=your_anon_key
    VITE_SERVER_URL=http://localhost:4000
+   ```
+5. *(Optional)* Add the following policy via the SQL Editor to whitelist Storage uploads:
+   ```sql
+   insert into storage.buckets (id, name, public) values ('music', 'music', true);
+   create policy "Anyone can upload music" on storage.objects for insert with check (bucket_id = 'music');
+   create policy "Anyone can update music" on storage.objects for update with check (bucket_id = 'music');
+   create policy "Public Access" on storage.objects for select using (bucket_id = 'music');
    ```
 *(Note: If you only want to use YouTube links, you can test it locally without Supabase setup.)*
 
@@ -53,11 +60,15 @@ Open `http://localhost:5173` in your browser. Create a room as the Host. Open an
 ---
 
 ## Technical Features Implemented
-1. **Room System**: Auto-generates 6-character room codes. Tracks Host vs. Listener privileges.
+1. **Room System**: Auto-generates 6-character room codes. Tracks Host, Co-Host, and Listener privileges.
 2. **Real-Time Sync**: Seek, Play, Pause, and new Queue items are instantly emitted to all clients via Socket.IO.
-3. **Dual Media Source**: Play YouTube links or local MP3 files seamlessly via `react-player`.
+3. **Multi-Platform Media**: Play YouTube links, SoundCloud URLs, or local MP3 files seamlessly via `react-player`.
 4. **Zustand State**: Clean, boilerplate-free state management in React.
-5. **Aesthetics**: Premium Glassmorphism UI using Tailwind CSS utilities.
+5. **Aesthetics**: Premium Glassmorphism UI using Tailwind CSS utilities with unified Toast notifications.
+6. **Room Persistence**: Active rooms are automatically backed up to a Supabase database every 10 seconds, surviving host disconnects.
+7. **Public Lobby**: Browse a grid of active, live rooms on the home page and join them instantly.
+8. **Auth & Favorites**: Sign in securely with Google. Star rooms to save them to your custom Dashboard for quick access.
+9. **Advanced DJ Tools**: The Host can toggle Auto-Loop / Repeat, view play history to restore songs, and approve or reject requested tracks from listeners.
 
 ---
 

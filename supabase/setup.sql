@@ -69,3 +69,12 @@ alter table public.rooms enable row level security;
 create policy "Rooms are viewable by everyone." on rooms for select using (true);
 -- Anyone can update rooms right now to allow the backend to easily persist via RLS bypass or authenticated backend requests
 create policy "Anyone can insert/update rooms." on rooms for all using (true) with check (true);
+
+-- 5. Storage Bucket (Music)
+insert into storage.buckets (id, name, public) 
+values ('music', 'music', true)
+on conflict (id) do nothing;
+
+create policy "Public Access" on storage.objects for select using (bucket_id = 'music');
+create policy "Anyone can upload music" on storage.objects for insert with check (bucket_id = 'music');
+create policy "Anyone can update music" on storage.objects for update with check (bucket_id = 'music');
