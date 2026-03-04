@@ -138,6 +138,20 @@ export default function handleSockets(io) {
             socket.to(roomId).emit('user_typing', { username, isTyping: false });
         });
 
+        // Host: Kick a user from the room
+        socket.on('kick_user', ({ roomId, targetSocketId }) => {
+            if (!rooms[roomId]) return;
+            // Only allow if the requester is the host
+            if (rooms[roomId].hostId !== socket.id) return;
+
+            // Tell the kicked user to leave
+            io.to(targetSocketId).emit('you_were_kicked');
+
+            // Remove them from our room state
+            rooms[roomId].users = rooms[roomId].users.filter(u => u.id !== targetSocketId);
+            io.to(roomId).emit('users_updated', rooms[roomId].users);
+        });
+
         // Disconnect
         socket.on('disconnect', () => {
             console.log(`User disconnected: ${socket.id}`);

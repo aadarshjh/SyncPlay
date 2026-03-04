@@ -1,8 +1,11 @@
 import React, { useRef, useState, useEffect } from 'react';
 import ReactPlayer from 'react-player';
-import { Play, Pause, SkipForward, Search, Volume2, VolumeX } from 'lucide-react';
+import { Play, Pause, SkipForward, Search, Volume2, VolumeX, MonitorPlay, Music2 } from 'lucide-react';
 import { socket } from '../lib/socket';
 import { useRoomStore } from '../store/useRoomStore';
+
+// Detect mobile - iOS/Android block JS volume control via hardware policy
+const isMobileBrowser = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
 function Player({ isHost, roomId }) {
     const { currentSong, isPlaying, currentTime } = useRoomStore();
@@ -10,6 +13,7 @@ function Player({ isHost, roomId }) {
     const [searchInput, setSearchInput] = useState('');
     const [volume, setVolume] = useState(0.8);
     const [isMuted, setIsMuted] = useState(false);
+    const [audioOnly, setAudioOnly] = useState(false);
 
     // Handle syncing to socket time changes
     useEffect(() => {
@@ -154,6 +158,27 @@ function Player({ isHost, roomId }) {
                         </div>
                         <p className="text-sm">No active song. Add something to the queue to start listening.</p>
                     </div>
+                ) : audioOnly ? (
+                    // Audio Only Mode
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
+                        <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center shadow-2xl">
+                            <Music2 className={`w-12 h-12 text-white ${isPlaying ? 'animate-pulse' : ''}`} />
+                        </div>
+                        <p className="text-zinc-400 text-sm font-medium text-center px-4 truncate max-w-full">{currentSong.title}</p>
+                        {/* ReactPlayer hidden but still playing audio */}
+                        <div className="hidden">
+                            <ReactPlayer
+                                ref={playerRef}
+                                url={currentSong.url}
+                                playing={isPlaying}
+                                volume={isMuted ? 0 : volume}
+                                onPlay={handlePlay}
+                                onPause={handlePause}
+                                onEnded={handleSkip}
+                                onProgress={onProgress}
+                            />
+                        </div>
+                    </div>
                 ) : (
                     <ReactPlayer
                         ref={playerRef}
@@ -201,28 +226,48 @@ function Player({ isHost, roomId }) {
                         </button>
                     </div>
 
-                    {/* Volume Controls (local — does not sync, each user controls their own volume) */}
-                    <div className="flex items-center gap-3 justify-center">
-                        <button
-                            onClick={() => setIsMuted(m => !m)}
-                            className="text-zinc-400 hover:text-white transition-colors p-1"
-                            title={isMuted ? 'Unmute' : 'Mute'}
-                        >
-                            {isMuted || volume === 0 ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
-                        </button>
-                        <input
-                            type="range"
-                            min={0}
-                            max={1}
-                            step={0.02}
-                            value={isMuted ? 0 : volume}
-                            onChange={e => { setVolume(parseFloat(e.target.value)); setIsMuted(false); }}
-                            className="w-32 accent-purple-500 cursor-pointer"
-                        />
-                        <span className="text-xs text-zinc-500 w-8 text-right">
-                            {isMuted ? '0' : Math.round(volume * 100)}%
-                        </span>
-                    </div>
+                    {/* Audio/Video Toggle */}
+                    {currentSong && (
+                        <div className="flex justify-center">
+                            <button
+                                onClick={() => setAudioOnly(a => !a)}
+                                className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all border border-zinc-700 hover:border-zinc-500 text-zinc-400 hover:text-white"
+                            >
+                                {audioOnly
+                                    ? <><MonitorPlay className="w-4 h-4" /> Switch to Video</>
+                                    : <><Music2 className="w-4 h-4" /> Audio Only</>}
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Volume Controls */}
+                    {isMobileBrowser ? (
+                        <p className="text-center text-xs text-zinc-600 italic">
+                            Use your device's volume buttons to adjust volume
+                        </p>
+                    ) : (
+                        <div className="flex items-center gap-3 justify-center">
+                            <button
+                                onClick={() => setIsMuted(m => !m)}
+                                className="text-zinc-400 hover:text-white transition-colors p-1"
+                                title={isMuted ? 'Unmute' : 'Mute'}
+                            >
+                                {isMuted || volume === 0 ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+                            </button>
+                            <input
+                                type="range"
+                                min={0}
+                                max={1}
+                                step={0.02}
+                                value={isMuted ? 0 : volume}
+                                onChange={e => { setVolume(parseFloat(e.target.value)); setIsMuted(false); }}
+                                className="w-32 accent-purple-500 cursor-pointer"
+                            />
+                            <span className="text-xs text-zinc-500 w-8 text-right">
+                                {isMuted ? '0' : Math.round(volume * 100)}%
+                            </span>
+                        </div>
+                    )}
                 </div>
             )}
 
