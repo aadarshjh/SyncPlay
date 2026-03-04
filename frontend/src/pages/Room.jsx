@@ -5,23 +5,86 @@ import { useRoomStore } from '../store/useRoomStore';
 import Player from '../components/Player';
 import Chat from '../components/Chat';
 import Queue from '../components/Queue';
-import { Copy, Users, LogOut, MessageSquare, ListMusic, X, Crown, UserMinus } from 'lucide-react';
+import { Copy, Users, LogOut, MessageSquare, ListMusic, X, Crown, UserMinus, Star } from 'lucide-react';
 import { useToast } from '../components/Toast';
+import { supabase } from '../lib/supabase';
 
 function Room() {
     const { roomId } = useParams();
     const navigate = useNavigate();
     const {
-        username, hostId, users, queue,
-        setRoomState, setUsers, setCurrentSong,
-        setIsPlaying, setCurrentTime, setQueue, resetStore
+        username, hostId, roles, users, queue, pendingRequests,
+        setRoomState, setRole, setUsers, setCurrentSong,
+        setIsPlaying, setCurrentTime, setQueue, setPendingRequests, resetStore
     } = useRoomStore();
 
     const [activeTab, setActiveTab] = useState('chat');
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [showUserList, setShowUserList] = useState(false);
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+    const [isFavorite, setIsFavorite] = useState(false);
+    const [isCheckingFavorite, setIsCheckingFavorite] = useState(false);
     const toast = useToast();
+
+    // Check if room is favorite
+    useEffect(() => {
+        const checkFavorite = async () => {
+            const currentUser = useRoomStore.getState().user;
+            if (!currentUser || !roomId) return;
+
+            setIsCheckingFavorite(true);
+            try {
+                const { data, error } = await supabase
+                    .from('favorite_rooms')
+                    .select('*')
+                    .eq('user_id', currentUser.id)
+                    .eq('room_id', roomId)
+                    .maybeSingle();
+
+                if (data) setIsFavorite(true);
+            } catch (err) {
+                console.error("Failed to check favorite status", err);
+            } finally {
+                setIsCheckingFavorite(false);
+            }
+        };
+
+        checkFavorite();
+    }, [roomId, useRoomStore.getState().user]);
+
+    const handleToggleFavorite = async () => {
+        const currentUser = useRoomStore.getState().user;
+        if (!currentUser) {
+            return toast('You must be signed in to save rooms', 'error');
+        }
+
+        try {
+            if (isFavorite) {
+                // Remove favorite
+                await supabase
+                    .from('favorite_rooms')
+                    .delete()
+                    .eq('user_id', currentUser.id)
+                    .eq('room_id', roomId);
+                setIsFavorite(false);
+                toast('Room removed from favorites', 'info');
+            } else {
+                // Add favorite
+                await supabase
+                    .from('favorite_rooms')
+                    .insert({
+                        user_id: currentUser.id,
+                        room_id: roomId,
+                        room_name: `Room ${roomId}`
+                    });
+                setIsFavorite(true);
+                toast('Room saved to favorites! ⭐️', 'success');
+            }
+        } catch (err) {
+            console.error("Failed to toggle favorite", err);
+            toast('Failed to update favorites', 'error');
+        }
+    };
 
     useEffect(() => {
         const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -42,6 +105,11 @@ function Room() {
         socket.on('song_paused', ({ currentTime }) => { setIsPlaying(false); if (currentTime !== undefined) setCurrentTime(currentTime); });
         socket.on('song_seeked', ({ currentTime }) => setCurrentTime(currentTime));
         socket.on('queue_updated', (q) => setQueue(q));
+        socket.on('requests_updated', (reqs) => setPendingRequests(reqs));
+        socket.on('role_updated', (role) => {
+            setRole(socket.id, role);
+            if (role === 'co-host') toast('You are now a Co-Host! 👑', 'success');
+        });
 
         // Listen to being kicked
         socket.on('you_were_kicked', () => {
@@ -52,7 +120,7 @@ function Room() {
         return () => {
             socket.off('room_state'); socket.off('users_updated'); socket.off('host_changed');
             socket.off('song_playing'); socket.off('song_paused'); socket.off('song_seeked');
-            socket.off('queue_updated'); socket.off('you_were_kicked');
+            socket.off('queue_updated'); socket.off('requests_updated'); socket.off('role_updated'); socket.off('you_were_kicked');
             socket.disconnect();
             resetStore();
         };
@@ -68,7 +136,15 @@ function Room() {
         setShowUserList(false);
     };
 
+    const handleMakeCoHost = (targetSocketId) => {
+        socket.emit('make_cohost', { roomId, targetSocketId });
+        setShowUserList(false);
+        toast('Promoted to Co-Host!', 'success');
+    };
+
     const isHost = socket.id === hostId;
+    const isCoHost = roles[socket.id] === 'co-host';
+    const isAuthorized = isHost || isCoHost;
 
     const sidebarContent = (
         <>
@@ -88,7 +164,7 @@ function Room() {
                 </button>
             </div>
             <div className="flex-1 overflow-hidden flex flex-col">
-                {activeTab === 'chat' ? <Chat roomId={roomId} /> : <Queue isHost={isHost} roomId={roomId} />}
+                {activeTab === 'chat' ? <Chat roomId={roomId} /> : <Queue isAuthorized={isAuthorized} isHost={isHost} roomId={roomId} />}
             </div>
         </>
     );
@@ -104,6 +180,16 @@ function Room() {
                         <span className="font-mono font-bold text-white text-sm tracking-wider">{roomId}</span>
                         <Copy className="w-3.5 h-3.5 text-zinc-500" />
                     </button>
+                    {useRoomStore.getState().user && (
+                        <button
+                            onClick={handleToggleFavorite}
+                            disabled={isCheckingFavorite}
+                            className={`p-1.5 rounded-lg border transition-colors ${isFavorite ? 'bg-yellow-500/10 border-yellow-500/50 text-yellow-500' : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:border-zinc-600 hover:text-yellow-500/70'}`}
+                            title={isFavorite ? "Remove from favorites" : "Save to favorites"}
+                        >
+                            <Star className="w-4 h-4" fill={isFavorite ? "currentColor" : "none"} />
+                        </button>
+                    )}
                 </div>
                 <div className="flex items-center gap-2">
                     {/* Users button - opens user list with kick */}
@@ -137,15 +223,30 @@ function Room() {
                                             {user.id === hostId && (
                                                 <Crown className="w-3.5 h-3.5 text-yellow-400 flex-shrink-0" title="Host" />
                                             )}
-                                            {/* Host can kick everyone else */}
+                                            {roles[user.id] === 'co-host' && user.id !== hostId && (
+                                                <span className="text-[10px] font-bold text-purple-400 bg-purple-500/10 px-1.5 py-0.5 rounded uppercase">Co-Host</span>
+                                            )}
+
+                                            {/* Host Management Actions */}
                                             {isHost && user.id !== socket.id && (
-                                                <button
-                                                    onClick={() => handleKick(user.id)}
-                                                    className="text-zinc-600 hover:text-red-400 transition-colors p-1 hover:bg-red-500/10 rounded"
-                                                    title={`Kick ${user.username}`}
-                                                >
-                                                    <UserMinus className="w-3.5 h-3.5" />
-                                                </button>
+                                                <div className="flex items-center gap-1">
+                                                    {roles[user.id] !== 'co-host' && (
+                                                        <button
+                                                            onClick={() => handleMakeCoHost(user.id)}
+                                                            className="text-[10px] font-bold text-zinc-400 hover:text-purple-400 hover:bg-purple-500/10 px-1.5 py-1 rounded transition-colors"
+                                                            title={`Make ${user.username} a Co-Host`}
+                                                        >
+                                                            Promote
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        onClick={() => handleKick(user.id)}
+                                                        className="text-zinc-600 hover:text-red-400 transition-colors p-1 hover:bg-red-500/10 rounded"
+                                                        title={`Kick ${user.username}`}
+                                                    >
+                                                        <UserMinus className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
                                             )}
                                         </li>
                                     ))}
@@ -164,7 +265,7 @@ function Room() {
             <div className="flex-1 flex overflow-hidden">
                 <main className="flex-1 overflow-y-auto bg-gradient-to-b from-zinc-900 to-zinc-950 p-3 sm:p-6 md:border-r md:border-zinc-800">
                     <div className="w-full max-w-4xl mx-auto">
-                        <Player isHost={isHost} roomId={roomId} />
+                        <Player isAuthorized={isAuthorized} isHost={isHost} roomId={roomId} />
                     </div>
                 </main>
 

@@ -1,3 +1,5 @@
+import { supabase } from '../lib/supabase.js';
+
 // In-memory room state storage
 // For production scale, you'd use Redis, but an object works perfectly for a college project
 const rooms = {};
@@ -7,21 +9,48 @@ export default function handleSockets(io) {
         console.log(`User connected: ${socket.id}`);
 
         // Join Room
-        socket.on('join_room', ({ roomId, username }) => {
+        socket.on('join_room', async ({ roomId, username }) => {
             socket.join(roomId);
 
             if (!rooms[roomId]) {
-                // Create new room if it doesn't exist
-                rooms[roomId] = {
-                    hostId: socket.id,
-                    users: [],
-                    queue: [],
-                    history: [],     // Recently played songs
-                    currentSong: null,
-                    isPlaying: false,
-                    currentTime: 0,
-                    loopMode: false, // Repeat all active
-                };
+                // Try to restore from database first
+                try {
+                    const { data, error } = await supabase
+                        .from('rooms')
+                        .select('state_json')
+                        .eq('id', roomId)
+                        .maybeSingle();
+
+                    if (data && data.state_json) {
+                        console.log(`Restoring room ${roomId} from database...`);
+                        rooms[roomId] = data.state_json;
+
+                        // We must reset transitive connections for the new session
+                        rooms[roomId].users = [];
+                        rooms[roomId].hostId = socket.id;
+                        rooms[roomId].roles = { [socket.id]: 'host' };
+                        rooms[roomId].isPlaying = false; // Pause playback on restart
+                    }
+                } catch (err) {
+                    console.error("Error restoring room from DB", err);
+                }
+
+                // If still no room (doesn't exist in DB either), create a fresh one
+                if (!rooms[roomId]) {
+                    // Create new room if it doesn't exist
+                    rooms[roomId] = {
+                        hostId: socket.id,
+                        roles: { [socket.id]: 'host' }, // Map of socketId to 'host', 'co-host'
+                        users: [],
+                        queue: [],
+                        pendingRequests: [], // Guest song suggestions
+                        history: [],     // Recently played songs
+                        currentSong: null,
+                        isPlaying: false,
+                        currentTime: 0,
+                        loopMode: false, // Repeat all active
+                    };
+                }
             }
 
             // Prevent duplicate UI entries if user reconnects rapidly
@@ -71,75 +100,151 @@ export default function handleSockets(io) {
         // Playback Sync: Seek
         socket.on('seek_time', ({ roomId, currentTime }) => {
             if (rooms[roomId]) {
-                rooms[roomId].currentTime = currentTime;
+                const room = rooms[roomId];
+                const role = room.roles[socket.id];
+                const isAuthorized = role === 'host' || role === 'co-host';
+
+                if (!isAuthorized) return; // Only host/co-host can seek
+
+                room.currentTime = currentTime;
                 io.to(roomId).emit('song_seeked', { currentTime });
             }
         });
 
         // Queue Management: Add song
+        // If sender is NOT host/co-host, it goes to pendingRequests
         socket.on('add_to_queue', ({ roomId, song }) => {
             if (rooms[roomId]) {
-                // Add unique ID to the song in queue for easy removal/reordering
-                const songEntry = { ...song, id: Date.now().toString() };
-                rooms[roomId].queue.push(songEntry);
+                const room = rooms[roomId];
+                const role = room.roles[socket.id];
+                const isAuthorized = role === 'host' || role === 'co-host';
 
-                // If no song is playing currently, maybe automatically play it
-                if (!rooms[roomId].currentSong) {
-                    rooms[roomId].currentSong = songEntry;
-                    rooms[roomId].queue.shift(); // Remove from queue
-                    rooms[roomId].isPlaying = true;
-                    io.to(roomId).emit('room_state', rooms[roomId]); // Broadcast full state change
+                const songEntry = { ...song, id: Date.now().toString() };
+
+                if (isAuthorized) {
+                    // Instantly add to queue
+                    room.queue.push(songEntry);
+
+                    // If no song is playing currently, maybe automatically play it
+                    if (!room.currentSong) {
+                        room.currentSong = songEntry;
+                        room.queue.shift(); // Remove from queue
+                        room.isPlaying = true;
+                        io.to(roomId).emit('room_state', room); // Broadcast full state change
+                    } else {
+                        io.to(roomId).emit('queue_updated', room.queue);
+                    }
                 } else {
-                    io.to(roomId).emit('queue_updated', rooms[roomId].queue);
+                    // Add to pending requests instead
+                    room.pendingRequests.push(songEntry);
+                    // Notify everyone (especially hosts) about new pending requests
+                    io.to(roomId).emit('requests_updated', room.pendingRequests);
+
+                    // Alert the host
+                    socket.to(room.hostId).emit('receive_message', {
+                        id: Date.now().toString(),
+                        username: 'System',
+                        text: `${song.addedBy} requested to play: ${song.title}`,
+                        timestamp: new Date()
+                    });
                 }
+            }
+        });
+
+        // Host Approval Flow
+        socket.on('approve_request', ({ roomId, songId }) => {
+            if (rooms[roomId]) {
+                const room = rooms[roomId];
+                // Only host can approve requests
+                if (room.hostId !== socket.id) return;
+
+                const songIndex = room.pendingRequests.findIndex(s => s.id === songId);
+                if (songIndex !== -1) {
+                    const song = room.pendingRequests.splice(songIndex, 1)[0];
+                    room.queue.push(song);
+
+                    if (!room.currentSong) {
+                        room.currentSong = room.queue.shift();
+                        room.isPlaying = true;
+                        io.to(roomId).emit('room_state', room);
+                    } else {
+                        io.to(roomId).emit('queue_updated', room.queue);
+                        io.to(roomId).emit('requests_updated', room.pendingRequests);
+                    }
+                }
+            }
+        });
+
+        socket.on('reject_request', ({ roomId, songId }) => {
+            if (rooms[roomId]) {
+                const room = rooms[roomId];
+                // Only host can reject requests
+                if (room.hostId !== socket.id) return;
+
+                room.pendingRequests = room.pendingRequests.filter(s => s.id !== songId);
+                io.to(roomId).emit('requests_updated', room.pendingRequests);
             }
         });
 
         // Queue Management: Skip song (also handles natural song end)
         socket.on('skip_song', ({ roomId }) => {
             if (rooms[roomId]) {
-                const prevSong = rooms[roomId].currentSong;
+                const room = rooms[roomId];
+                const role = room.roles[socket.id];
+                const isAuthorized = role === 'host' || role === 'co-host';
+
+                if (!isAuthorized) return; // Only host/co-host can skip
+
+                const prevSong = room.currentSong;
                 // Add finishing song to history (max 50) before picking next
                 if (prevSong) {
-                    rooms[roomId].history.unshift(prevSong);
-                    if (rooms[roomId].history.length > 50) rooms[roomId].history.pop();
+                    room.history.unshift(prevSong);
+                    if (room.history.length > 50) room.history.pop();
 
                     // If loop mode is ON, add the finished song to the END of the queue
-                    if (rooms[roomId].loopMode) {
-                        rooms[roomId].queue.push({ ...prevSong, id: Date.now().toString() + Math.random().toString(36).substr(2, 5) });
+                    if (room.loopMode) {
+                        room.queue.push({ ...prevSong, id: Date.now().toString() + Math.random().toString(36).substr(2, 5) });
                     }
                 }
 
-                if (rooms[roomId].queue.length > 0) {
-                    rooms[roomId].currentSong = rooms[roomId].queue.shift(); // Play next
-                    rooms[roomId].currentTime = 0;
-                    rooms[roomId].isPlaying = true;
+                if (room.queue.length > 0) {
+                    room.currentSong = room.queue.shift(); // Play next
+                    room.currentTime = 0;
+                    room.isPlaying = true;
                 } else {
-                    rooms[roomId].currentSong = null; // Nothing left
-                    rooms[roomId].isPlaying = false;
-                    rooms[roomId].currentTime = 0;
+                    room.currentSong = null; // Nothing left
+                    room.isPlaying = false;
+                    room.currentTime = 0;
                 }
-                io.to(roomId).emit('room_state', rooms[roomId]);
+                io.to(roomId).emit('room_state', room);
             }
         });
 
         // Queue Management: Shuffle
         socket.on('shuffle_queue', ({ roomId }) => {
             if (rooms[roomId]) {
+                const room = rooms[roomId];
+                const role = room.roles[socket.id];
+                if (role !== 'host' && role !== 'co-host') return;
+
                 // Fisher-Yates shuffle algorithm
-                for (let i = rooms[roomId].queue.length - 1; i > 0; i--) {
+                for (let i = room.queue.length - 1; i > 0; i--) {
                     const j = Math.floor(Math.random() * (i + 1));
-                    [rooms[roomId].queue[i], rooms[roomId].queue[j]] = [rooms[roomId].queue[j], rooms[roomId].queue[i]];
+                    [room.queue[i], room.queue[j]] = [room.queue[j], room.queue[i]];
                 }
-                io.to(roomId).emit('queue_updated', rooms[roomId].queue);
+                io.to(roomId).emit('queue_updated', room.queue);
             }
         });
 
         // Loop Toggle
         socket.on('toggle_loop', ({ roomId, loopMode }) => {
             if (rooms[roomId]) {
-                rooms[roomId].loopMode = loopMode;
-                io.to(roomId).emit('room_state', rooms[roomId]); // Broadcast full state to update loop UI
+                const room = rooms[roomId];
+                const role = room.roles[socket.id];
+                if (role !== 'host' && role !== 'co-host') return;
+
+                room.loopMode = loopMode;
+                io.to(roomId).emit('room_state', room); // Broadcast full state to update loop UI
             }
         });
 
@@ -148,6 +253,25 @@ export default function handleSockets(io) {
             if (rooms[roomId]) {
                 rooms[roomId].queue = rooms[roomId].queue.filter(s => s.id !== songId);
                 io.to(roomId).emit('queue_updated', rooms[roomId].queue);
+            }
+        });
+
+        // User Roles: Make Co-Host
+        socket.on('make_cohost', ({ roomId, targetSocketId }) => {
+            if (rooms[roomId] && rooms[roomId].hostId === socket.id) {
+                rooms[roomId].roles[targetSocketId] = 'co-host';
+                // Send targeted update that user is cohost
+                io.to(targetSocketId).emit('role_updated', 'co-host');
+                // Broadcast room state
+                io.to(roomId).emit('room_state', rooms[roomId]);
+
+                // Alert the target user
+                io.to(targetSocketId).emit('receive_message', {
+                    id: Date.now().toString(),
+                    username: 'System',
+                    text: `You have been promoted to Co-Host. You can now control playback.`,
+                    timestamp: new Date()
+                });
             }
         });
 
@@ -217,4 +341,22 @@ export default function handleSockets(io) {
             }
         });
     });
+
+    // Background sync: Persist all active rooms to the database every 10 seconds
+    setInterval(() => {
+        Object.keys(rooms).forEach(async (roomId) => {
+            const room = rooms[roomId];
+            if (room && room.users.length > 0) {
+                try {
+                    await supabase.from('rooms').upsert({
+                        id: roomId,
+                        host_id: room.hostId,
+                        state_json: room
+                    });
+                } catch (err) {
+                    console.error(`Failed to persist room ${roomId}:`, err);
+                }
+            }
+        });
+    }, 10000);
 }

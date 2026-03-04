@@ -1,18 +1,28 @@
 import React, { useRef, useState } from 'react';
 import { useRoomStore } from '../store/useRoomStore';
-import { Music, Upload, Loader2, X } from 'lucide-react';
+import { Music, Upload, Loader2, X, Check } from 'lucide-react';
 import { socket } from '../lib/socket';
 import { supabase } from '../lib/supabase';
 import { useToast } from '../components/Toast';
 
-function Queue({ isHost, roomId }) {
-    const { queue, history, currentSong, username } = useRoomStore();
+function Queue({ isAuthorized, isHost, roomId }) {
+    const { queue, history, pendingRequests, currentSong, username } = useRoomStore();
     const fileInputRef = useRef(null);
     const [isUploading, setIsUploading] = useState(false);
     const toast = useToast();
 
     const handleRemoveFromQueue = (songId) => {
         socket.emit('remove_from_queue', { roomId, songId });
+    };
+
+    const handleApproveRequest = (songId) => {
+        socket.emit('approve_request', { roomId, songId });
+        toast('Request approved', 'success');
+    };
+
+    const handleRejectRequest = (songId) => {
+        socket.emit('reject_request', { roomId, songId });
+        toast('Request rejected', 'info');
     };
 
     const handleFileUpload = async (event) => {
@@ -83,6 +93,44 @@ function Queue({ isHost, roomId }) {
 
             <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-6">
 
+                {/* ── Pending Requests (Host / Co-Host Only) ── */}
+                {isAuthorized && pendingRequests.length > 0 && (
+                    <div>
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="font-semibold text-sm text-yellow-400">Pending Requests</h3>
+                            <span className="text-xs font-mono bg-yellow-500/20 px-2 py-0.5 rounded text-yellow-300">{pendingRequests.length}</span>
+                        </div>
+                        <ul className="space-y-2">
+                            {pendingRequests.map((song) => (
+                                <li key={song.id} className="bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-3 flex items-center justify-between">
+                                    <div className="flex items-center gap-3 overflow-hidden">
+                                        <div className="truncate">
+                                            <p className="text-sm font-medium text-zinc-200 truncate">{song.title}</p>
+                                            <p className="text-xs text-yellow-500/80 truncate">Requested by {song.addedBy}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                                        <button
+                                            onClick={() => handleApproveRequest(song.id)}
+                                            title="Approve request"
+                                            className="p-1.5 rounded-lg bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors"
+                                        >
+                                            <Check className="w-4 h-4" />
+                                        </button>
+                                        <button
+                                            onClick={() => handleRejectRequest(song.id)}
+                                            title="Reject request"
+                                            className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
+
                 {/* ── Active Queue ── */}
                 <div>
                     <div className="flex items-center justify-between mb-4">
@@ -105,8 +153,8 @@ function Queue({ isHost, roomId }) {
                                             <p className="text-xs text-zinc-500 truncate">Added by {song.addedBy}</p>
                                         </div>
                                     </div>
-                                    {/* Host-only or song-owner remove button */}
-                                    {(isHost || song.addedBy === username) && (
+                                    {/* Authorized users or song-owner remove button */}
+                                    {(isAuthorized || song.addedBy === username) && (
                                         <button
                                             onClick={() => handleRemoveFromQueue(song.id)}
                                             title="Remove from queue"

@@ -16,7 +16,7 @@ const formatTime = (secs) => {
     return `${m}:${s}`;
 };
 
-function Player({ isHost, roomId }) {
+function Player({ isHost, isAuthorized, roomId }) {
     const { currentSong, isPlaying, currentTime, queue, loopMode } = useRoomStore();
     const playerRef = useRef(null);
     const toast = useToast();
@@ -48,25 +48,25 @@ function Player({ isHost, roomId }) {
     }, [currentSong?.id]); // Depend on ID so it triggers properly
 
     const handlePlay = () => {
-        if (!isHost) return;
+        if (!isAuthorized) return;
         const time = playerRef.current?.getCurrentTime() || 0;
         socket.emit('play_song', { roomId, currentTime: time });
     };
 
     const handlePause = () => {
-        if (!isHost) return;
+        if (!isAuthorized) return;
         const time = playerRef.current?.getCurrentTime() || 0;
         socket.emit('pause_song', { roomId, currentTime: time });
     };
 
     const handleSeek = (e) => {
-        if (!isHost) return;
+        if (!isAuthorized) return;
         // Debounce seek emits in a real app, here we emit simply
         socket.emit('seek_time', { roomId, currentTime: parseFloat(e) });
     };
 
     const handleSkip = () => {
-        if (!isHost) return;
+        if (!isAuthorized) return;
         socket.emit('skip_song', { roomId });
     };
 
@@ -78,20 +78,20 @@ function Player({ isHost, roomId }) {
     const handleSeekChange = (e) => setPlayed(parseFloat(e.target.value));
     const handleSeekMouseUp = (e) => {
         setSeeking(false);
-        if (!isHost) return;
+        if (!isAuthorized) return;
         const newTime = parseFloat(e.target.value) * duration;
         playerRef.current?.seekTo(newTime);
         socket.emit('seek_time', { roomId, currentTime: newTime });
     };
 
     const handleShuffle = () => {
-        if (!isHost || queue.length < 2) return;
+        if (!isAuthorized || queue.length < 2) return;
         socket.emit('shuffle_queue', { roomId });
         toast('Queue shuffled 🔀', 'success');
     };
 
     const handleToggleLoop = () => {
-        if (!isHost) return;
+        if (!isAuthorized) return;
         socket.emit('toggle_loop', { roomId, loopMode: !loopMode });
         toast(`Repeat ${!loopMode ? 'enabled 🔁' : 'disabled'}`, 'info');
     };
@@ -128,26 +128,74 @@ function Player({ isHost, roomId }) {
         e.preventDefault();
         if (!searchInput.trim()) return;
 
-        const urlPattern = /^(http|https):\/\/[^ "]+$/;
-        if (urlPattern.test(searchInput)) {
-            // Direct Link pasted
-            socket.emit('add_to_queue', {
+        const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
+
+        // Check for playlist
+        if (searchInput.includes('list=')) {
+            setIsSearching(true);
+            try {
+                // Extract list ID. This handles full links and shortened links with list params.
+                const url = new URL(searchInput);
+                const listId = url.searchParams.get('list');
+
+                if (listId) {
+                    const res = await fetch(`${serverUrl}/api/playlist?listId=${encodeURIComponent(listId)}`);
+                    const data = await res.json();
+
+                    if (data.results && data.results.length > 0) {
+                        data.results.forEach(video => {
+                            socket.emit(isAuthorized ? 'add_to_queue' : 'request_song', {
+                                roomId,
+                                song: {
+                                    title: video.title,
+                                    url: video.url,
+                                    addedBy: useRoomStore.getState().username,
+                                    thumbnail: video.thumbnail,
+                                    type: 'youtube'
+                                }
+                            });
+                        });
+
+                        if (isAuthorized) {
+                            toast(`Added ${data.results.length} songs from playlist`, 'success');
+                        } else {
+                            toast(`Requested ${data.results.length} songs from playlist`, 'info');
+                        }
+                        setSearchInput('');
+                        return; // Exit early
+                    }
+                }
+            } catch (err) {
+                console.error("Playlist fetch failed:", err);
+                toast('Failed to load playlist.', 'error');
+            } finally {
+                setIsSearching(false);
+            }
+        }
+
+        if (ReactPlayer.canPlay(searchInput) || searchInput.includes('soundcloud.com')) {
+            // It's a valid link (YouTube, SoundCloud, etc.), just add it directly.
+            // For SoundCloud tracks, ReactPlayer handles them natively but we may not have title/thumb right away
+            socket.emit(isAuthorized ? 'add_to_queue' : 'request_song', {
                 roomId,
                 song: {
-                    title: 'YouTube Link',
+                    title: searchInput.includes('soundcloud.com') ? 'SoundCloud Track' : '(Link)',
                     url: searchInput,
                     addedBy: useRoomStore.getState().username,
-                    type: 'youtube'
+                    type: searchInput.includes('soundcloud.com') ? 'soundcloud' : 'link'
                 }
             });
+            if (isAuthorized) {
+                toast('Added to queue', 'success');
+            } else {
+                toast('Song requested! Waiting for host approval.', 'info');
+            }
             setSearchInput('');
             setSearchResults([]);
         } else {
             // Text search
             setIsSearching(true);
             try {
-                // Pointing to our backend proxy route
-                const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
                 const res = await fetch(`${serverUrl}/api/search?q=${encodeURIComponent(searchInput)}`);
                 const data = await res.json();
                 if (data.results) {
@@ -163,7 +211,7 @@ function Player({ isHost, roomId }) {
     };
 
     const handleSelectSearchResult = (video) => {
-        socket.emit('add_to_queue', {
+        socket.emit(isAuthorized ? 'add_to_queue' : 'request_song', {
             roomId,
             song: {
                 title: video.title,
@@ -172,6 +220,11 @@ function Player({ isHost, roomId }) {
                 type: 'youtube'
             }
         });
+        if (isAuthorized) {
+            toast('Added to queue', 'success');
+        } else {
+            toast('Song requested! Waiting for host approval.', 'info');
+        }
         setSearchInput('');
         setSearchResults([]);
     };
@@ -189,7 +242,7 @@ function Player({ isHost, roomId }) {
                             value={searchInput}
                             onChange={(e) => setSearchInput(e.target.value)}
                             className="w-full bg-zinc-900 border border-zinc-700/50 rounded-xl pl-9 pr-3 py-3 text-white focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all placeholder:text-zinc-600 shadow-inner text-sm sm:text-base"
-                            placeholder="Search YouTube or paste URL..."
+                            placeholder="Search YouTube or paste a URL (YouTube / SoundCloud)..."
                         />
                     </div>
                     <button
@@ -197,7 +250,7 @@ function Player({ isHost, roomId }) {
                         disabled={isSearching}
                         className="flex-shrink-0 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-900 disabled:text-zinc-500 px-5 py-3 rounded-xl text-sm font-semibold transition-colors whitespace-nowrap"
                     >
-                        {isSearching ? '...' : 'Add'}
+                        {isSearching ? '...' : 'Search'}
                     </button>
                 </form>
 
@@ -221,22 +274,29 @@ function Player({ isHost, roomId }) {
                 )}
             </div>
 
-            {/* Video / Album Art Area — responsive aspect ratio */}
-            <div className="w-full max-w-3xl aspect-video bg-zinc-900 rounded-2xl border border-zinc-800 shadow-2xl overflow-hidden relative">
+            {/* Video / Album Art Area */}
+            <div className={`w-full max-w-3xl bg-zinc-900 rounded-2xl border border-zinc-800 shadow-2xl overflow-hidden relative transition-all duration-500 ease-in-out ${audioOnly || currentSong?.type === 'local' ? 'h-48 sm:h-64 flex flex-col items-center justify-center p-6' : 'aspect-video'}`}>
                 {!currentSong ? (
                     <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-500 text-center px-4">
                         <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-zinc-800/50 flex items-center justify-center mb-4 border border-zinc-700">
                             <Play className="w-7 h-7 sm:w-8 sm:h-8 ml-1" />
                         </div>
-                        <p className="text-sm">No active song. Add something to the queue to start listening.</p>
+                        <p className="text-sm">No active song. Search YouTube or upload audio to start listening.</p>
                     </div>
-                ) : audioOnly ? (
-                    // Audio Only Mode
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
-                        <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center shadow-2xl">
-                            <Music2 className={`w-12 h-12 text-white ${isPlaying ? 'animate-pulse' : ''}`} />
+                ) : audioOnly || currentSong?.type === 'local' ? (
+                    // Audio Only / Local Audio Mode
+                    <div className="flex flex-col items-center justify-center gap-4 w-full h-full z-10">
+                        <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center shadow-2xl relative overflow-hidden group">
+                            {/* Animated background glow for playing */}
+                            {isPlaying && <div className="absolute inset-0 bg-white/20 animate-pulse" />}
+                            <Music2 className="w-10 h-10 sm:w-12 sm:h-12 text-white relative z-10" />
                         </div>
-                        <p className="text-zinc-400 text-sm font-medium text-center px-4 truncate max-w-full">{currentSong.title}</p>
+
+                        <div className="text-center w-full max-w-md px-4">
+                            <h2 className="text-zinc-200 text-base sm:text-lg font-bold truncate leading-tight">{currentSong.title}</h2>
+                            <p className="text-zinc-500 text-xs sm:text-sm mt-1 mb-2">Streaming High Quality Audio</p>
+                        </div>
+
                         {/* ReactPlayer hidden but still playing audio */}
                         <div className="hidden">
                             <ReactPlayer
@@ -244,20 +304,23 @@ function Player({ isHost, roomId }) {
                                 url={currentSong.url}
                                 playing={isPlaying}
                                 volume={isMuted ? 0 : volume}
+                                controls={false} // NEVER show messy html5 audio controls
                                 onPlay={handlePlay}
                                 onPause={handlePause}
                                 onEnded={handleSkip}
                                 onProgress={onProgress}
+                                onDuration={setDuration}
                             />
                         </div>
                     </div>
                 ) : (
+                    // Standard Video Player Mode
                     <ReactPlayer
                         ref={playerRef}
                         url={currentSong.url}
                         playing={isPlaying}
                         volume={isMuted ? 0 : volume}
-                        controls={isHost}
+                        controls={isAuthorized}
                         width="100%"
                         height="100%"
                         onPlay={handlePlay}
@@ -265,7 +328,7 @@ function Player({ isHost, roomId }) {
                         onEnded={handleSkip}
                         onProgress={onProgress}
                         onDuration={setDuration}
-                        style={{ pointerEvents: isHost ? 'auto' : 'none' }}
+                        style={{ pointerEvents: isAuthorized ? 'auto' : 'none', position: 'absolute', top: 0, left: 0 }}
                     />
                 )}
             </div>
@@ -281,8 +344,8 @@ function Player({ isHost, roomId }) {
                         onChange={handleSeekChange}
                         onMouseUp={handleSeekMouseUp}
                         onTouchEnd={handleSeekMouseUp}
-                        disabled={!isHost}
-                        className={`w-full h-1.5 rounded-full appearance-none ${isHost ? 'cursor-pointer' : 'cursor-default opacity-70'}`}
+                        disabled={!isAuthorized}
+                        className={`w-full h-1.5 rounded-full appearance-none ${isAuthorized ? 'cursor-pointer' : 'cursor-default opacity-70'}`}
                         style={{
                             background: `linear-gradient(to right, rgb(168 85 247) ${played * 100}%, rgb(63 63 70) ${played * 100}%)`
                         }}
@@ -306,11 +369,11 @@ function Player({ isHost, roomId }) {
                     <div className="flex justify-center items-center gap-4 sm:gap-6">
                         <button
                             onClick={handleShuffle}
-                            disabled={!isHost || queue.length < 2}
+                            disabled={!isAuthorized || queue.length < 2}
                             title="Shuffle Queue"
-                            className={`p-3 rounded-full flex items-center justify-center transition-all ${!isHost || queue.length < 2
-                                    ? 'text-zinc-700 cursor-not-allowed hidden sm:flex'
-                                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800 active:scale-95'
+                            className={`p-3 rounded-full flex items-center justify-center transition-all ${!isAuthorized || queue.length < 2
+                                ? 'text-zinc-700 cursor-not-allowed hidden sm:flex'
+                                : 'text-zinc-400 hover:text-white hover:bg-zinc-800 active:scale-95'
                                 }`}
                         >
                             <Shuffle className="w-5 h-5 sm:w-6 sm:h-6" />
@@ -318,8 +381,8 @@ function Player({ isHost, roomId }) {
 
                         <button
                             onClick={isPlaying ? handlePause : handlePlay}
-                            disabled={!isHost}
-                            className={`w-16 h-16 sm:w-14 sm:h-14 rounded-full flex items-center justify-center shadow-lg transition-all touch-target ${!isHost ? 'bg-zinc-800 text-zinc-600 cursor-not-allowed' : 'bg-gradient-to-tr from-purple-500 to-blue-500 active:scale-95 hover:scale-105 text-white'
+                            disabled={!isAuthorized}
+                            className={`w-16 h-16 sm:w-14 sm:h-14 rounded-full flex items-center justify-center shadow-lg transition-all touch-target ${!isAuthorized ? 'bg-zinc-800 text-zinc-600 cursor-not-allowed' : 'bg-gradient-to-tr from-purple-500 to-blue-500 active:scale-95 hover:scale-105 text-white'
                                 }`}
                         >
                             {isPlaying ? <Pause className="w-7 h-7" /> : <Play className="w-7 h-7 ml-1" />}
@@ -327,9 +390,9 @@ function Player({ isHost, roomId }) {
 
                         <button
                             onClick={handleSkip}
-                            disabled={!isHost}
+                            disabled={!isAuthorized}
                             title="Skip / Next"
-                            className={`p-4 rounded-full flex items-center justify-center transition-all touch-target ${!isHost ? 'text-zinc-600 cursor-not-allowed' : 'text-zinc-400 hover:text-white hover:bg-zinc-800 active:scale-95'
+                            className={`p-4 rounded-full flex items-center justify-center transition-all touch-target ${!isAuthorized ? 'text-zinc-600 cursor-not-allowed' : 'text-zinc-400 hover:text-white hover:bg-zinc-800 active:scale-95'
                                 }`}
                         >
                             <SkipForward className="w-6 h-6 sm:w-7 sm:h-7" />
@@ -337,13 +400,13 @@ function Player({ isHost, roomId }) {
 
                         <button
                             onClick={handleToggleLoop}
-                            disabled={!isHost}
+                            disabled={!isAuthorized}
                             title={loopMode ? "Repeat is On" : "Repeat is Off"}
-                            className={`p-3 rounded-full flex items-center justify-center transition-all ${!isHost
-                                    ? 'text-zinc-700 cursor-not-allowed hidden sm:flex'
-                                    : loopMode
-                                        ? 'text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 active:scale-95'
-                                        : 'text-zinc-400 hover:text-white hover:bg-zinc-800 active:scale-95'
+                            className={`p-3 rounded-full flex items-center justify-center transition-all ${!isAuthorized
+                                ? 'text-zinc-700 cursor-not-allowed hidden sm:flex'
+                                : loopMode
+                                    ? 'text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 active:scale-95'
+                                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800 active:scale-95'
                                 }`}
                         >
                             <Repeat className="w-5 h-5 sm:w-6 sm:h-6" />
@@ -429,9 +492,9 @@ function Player({ isHost, roomId }) {
             )}
 
             {/* Host Notice */}
-            {!isHost && currentSong && (
+            {!isAuthorized && currentSong && (
                 <p className="text-xs text-zinc-500 mt-4 bg-zinc-900/50 px-3 py-1.5 rounded-full border border-zinc-800">
-                    You are listening along. Only the host can control playback.
+                    Host or Co-Hosts control playback
                 </p>
             )}
         </div>

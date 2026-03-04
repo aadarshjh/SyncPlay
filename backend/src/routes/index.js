@@ -1,5 +1,6 @@
 import express from 'express';
 import ytSearch from 'yt-search';
+import { supabase } from '../lib/supabase.js';
 
 const router = express.Router();
 
@@ -47,6 +48,66 @@ router.get('/lyrics', async (req, res) => {
     } catch (error) {
         console.error('Lyrics Error:', error);
         res.json({ lyrics: null });
+    }
+});
+
+router.get('/playlist', async (req, res) => {
+    try {
+        const { listId } = req.query;
+        if (!listId) {
+            return res.status(400).json({ error: 'listId is required' });
+        }
+
+        const playlist = await ytSearch({ listId });
+
+        if (!playlist || !playlist.videos) {
+            return res.status(404).json({ error: 'Playlist not found or empty' });
+        }
+
+        const videos = playlist.videos.map(v => ({
+            title: v.title,
+            url: `https://youtube.com/watch?v=${v.videoId}`,
+            author: v.author.name,
+            thumbnail: v.thumbnail
+        }));
+
+        res.json({ results: videos });
+    } catch (error) {
+        console.error("Playlist Error:", error);
+        res.status(500).json({ error: 'Failed to fetch playlist' });
+    }
+});
+
+// Fetch active rooms for the public lobby
+router.get('/rooms', async (req, res) => {
+    try {
+        const { data: rooms, error } = await supabase
+            .from('rooms')
+            .select('*')
+            .order('updated_at', { ascending: false })
+            .limit(50); // Get latest 50 active rooms
+
+        if (error) throw error;
+
+        // Process and filter rooms to only send necessary public info
+        const activeRooms = rooms
+            .filter(r => r.state_json && r.state_json.users && r.state_json.users.length > 0) // Only rooms with people in them
+            .map(r => ({
+                id: r.id,
+                host_id: r.host_id,
+                user_count: r.state_json.users.length,
+                current_song: r.state_json.currentSong ? {
+                    title: r.state_json.currentSong.title,
+                    thumbnail: r.state_json.currentSong.thumbnail,
+                    artist: r.state_json.currentSong.author || 'Unknown Artist'
+                } : null,
+                users: r.state_json.users.slice(0, 3).map(u => ({ username: u.username })) // Preview up to 3 users
+            }));
+
+        res.json({ rooms: activeRooms });
+    } catch (err) {
+        console.error("Failed to fetch public rooms:", err);
+        res.status(500).json({ error: 'Failed to fetch public rooms' });
     }
 });
 
