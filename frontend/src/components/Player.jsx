@@ -8,6 +8,14 @@ import { useToast } from '../components/Toast';
 // Detect mobile - iOS/Android block JS volume control via hardware policy
 const isMobileBrowser = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
+// Format seconds → m:ss
+const formatTime = (secs) => {
+    if (!secs || isNaN(secs)) return '0:00';
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+};
+
 function Player({ isHost, roomId }) {
     const { currentSong, isPlaying, currentTime } = useRoomStore();
     const playerRef = useRef(null);
@@ -16,6 +24,14 @@ function Player({ isHost, roomId }) {
     const [volume, setVolume] = useState(0.8);
     const [isMuted, setIsMuted] = useState(false);
     const [audioOnly, setAudioOnly] = useState(false);
+    // Seek bar
+    const [played, setPlayed] = useState(0);      // 0-1 fraction
+    const [duration, setDuration] = useState(0);  // seconds
+    const [seeking, setSeeking] = useState(false);
+    // Lyrics
+    const [showLyrics, setShowLyrics] = useState(false);
+    const [lyrics, setLyrics] = useState(null);
+    const [lyricsLoading, setLyricsLoading] = useState(false);
 
     // Handle syncing to socket time changes
     useEffect(() => {
@@ -47,8 +63,43 @@ function Player({ isHost, roomId }) {
         socket.emit('skip_song', { roomId });
     };
 
-    const onProgress = (state) => {
-        // Optionally emit progress if you want strict sync continuously, but usually play/pause/seek is enough
+    const onProgress = ({ played: p, playedSeconds }) => {
+        if (!seeking) setPlayed(p);
+    };
+
+    const handleSeekMouseDown = () => setSeeking(true);
+    const handleSeekChange = (e) => setPlayed(parseFloat(e.target.value));
+    const handleSeekMouseUp = (e) => {
+        setSeeking(false);
+        if (!isHost) return;
+        const newTime = parseFloat(e.target.value) * duration;
+        playerRef.current?.seekTo(newTime);
+        socket.emit('seek_time', { roomId, currentTime: newTime });
+    };
+
+    const fetchLyrics = async (title) => {
+        setLyricsLoading(true);
+        setLyrics(null);
+        setShowLyrics(true);
+        try {
+            // Try to split "Artist - Song" format from YouTube titles
+            const parts = title.split('-');
+            const artist = parts.length > 1 ? parts[0].trim() : title;
+            const song = parts.length > 1 ? parts.slice(1).join('-').trim() : title;
+            // Remove common YouTube suffixes like (Official Video) etc.
+            const cleanSong = song.replace(/\(.*?\)/g, '').replace(/\[.*?\]/g, '').trim();
+            const res = await fetch(`https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(cleanSong)}`);
+            const data = await res.json();
+            if (data.lyrics) {
+                setLyrics(data.lyrics);
+            } else {
+                setLyrics(null);
+            }
+        } catch {
+            setLyrics(null);
+        } finally {
+            setLyricsLoading(false);
+        }
     };
 
     const [searchResults, setSearchResults] = useState([]);
@@ -194,14 +245,39 @@ function Player({ isHost, roomId }) {
                         onPause={handlePause}
                         onEnded={handleSkip}
                         onProgress={onProgress}
+                        onDuration={setDuration}
                         style={{ pointerEvents: isHost ? 'auto' : 'none' }}
                     />
                 )}
             </div>
 
+            {/* ── Seek Bar ── */}
+            {currentSong && duration > 0 && (
+                <div className="w-full max-w-3xl mt-2 px-1">
+                    <input
+                        type="range"
+                        min={0} max={1} step={0.001}
+                        value={played}
+                        onMouseDown={handleSeekMouseDown}
+                        onChange={handleSeekChange}
+                        onMouseUp={handleSeekMouseUp}
+                        onTouchEnd={handleSeekMouseUp}
+                        disabled={!isHost}
+                        className={`w-full h-1.5 rounded-full appearance-none ${isHost ? 'cursor-pointer' : 'cursor-default opacity-70'}`}
+                        style={{
+                            background: `linear-gradient(to right, rgb(168 85 247) ${played * 100}%, rgb(63 63 70) ${played * 100}%)`
+                        }}
+                    />
+                    <div className="flex justify-between text-[10px] text-zinc-500 mt-1 font-mono">
+                        <span>{formatTime(played * duration)}</span>
+                        <span>{formatTime(duration)}</span>
+                    </div>
+                </div>
+            )}
+
             {/* Custom Controls Container */}
             {currentSong && (
-                <div className="mt-4 sm:mt-8 glass-panel p-4 sm:p-6 w-full max-w-2xl flex flex-col gap-4">
+                <div className="mt-4 sm:mt-6 glass-panel p-4 sm:p-6 w-full max-w-2xl flex flex-col gap-4">
                     <div className="text-center">
                         <h2 className="text-base sm:text-xl font-bold truncate">{currentSong.title}</h2>
                         <p className="text-zinc-400 text-xs sm:text-sm">Added by {currentSong.addedBy}</p>
@@ -228,9 +304,9 @@ function Player({ isHost, roomId }) {
                         </button>
                     </div>
 
-                    {/* Audio/Video Toggle */}
+                    {/* Audio/Video Toggle + Lyrics Button */}
                     {currentSong && (
-                        <div className="flex justify-center">
+                        <div className="flex justify-center gap-2 flex-wrap">
                             <button
                                 onClick={() => setAudioOnly(a => !a)}
                                 className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all border border-zinc-700 hover:border-zinc-500 text-zinc-400 hover:text-white"
@@ -238,6 +314,15 @@ function Player({ isHost, roomId }) {
                                 {audioOnly
                                     ? <><MonitorPlay className="w-4 h-4" /> Switch to Video</>
                                     : <><Music2 className="w-4 h-4" /> Audio Only</>}
+                            </button>
+                            <button
+                                onClick={() => showLyrics ? setShowLyrics(false) : fetchLyrics(currentSong.title)}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all border ${showLyrics
+                                    ? 'border-purple-500 text-purple-400 bg-purple-500/10'
+                                    : 'border-zinc-700 hover:border-zinc-500 text-zinc-400 hover:text-white'
+                                    }`}
+                            >
+                                🎤 {showLyrics ? 'Hide Lyrics' : 'Show Lyrics'}
                             </button>
                         </div>
                     )}
@@ -270,6 +355,30 @@ function Player({ isHost, roomId }) {
                             </span>
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* ── Lyrics Panel ── */}
+            {currentSong && showLyrics && (
+                <div className="w-full max-w-2xl mt-4 glass-panel overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
+                        <span className="text-sm font-semibold text-zinc-300">🎤 Lyrics</span>
+                        <button onClick={() => setShowLyrics(false)} className="text-zinc-500 hover:text-white">
+                            <span className="text-xs">✕ Close</span>
+                        </button>
+                    </div>
+                    <div className="p-4 max-h-72 overflow-y-auto">
+                        {lyricsLoading ? (
+                            <p className="text-zinc-500 text-sm text-center animate-pulse">Fetching lyrics...</p>
+                        ) : lyrics ? (
+                            <pre className="text-zinc-300 text-sm whitespace-pre-wrap font-sans leading-relaxed">{lyrics}</pre>
+                        ) : (
+                            <div className="text-center text-zinc-500 text-sm py-4">
+                                <p>😔 Lyrics not found for this song.</p>
+                                <p className="text-xs mt-1 text-zinc-600">Works best with songs in "Artist - Title" format.</p>
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
 
