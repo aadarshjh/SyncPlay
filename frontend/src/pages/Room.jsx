@@ -6,6 +6,7 @@ import Player from '../components/Player';
 import Chat from '../components/Chat';
 import Queue from '../components/Queue';
 import { Copy, Users, LogOut, MessageSquare, ListMusic, X, Crown, UserMinus } from 'lucide-react';
+import { useToast } from '../components/Toast';
 
 function Room() {
     const { roomId } = useParams();
@@ -20,6 +21,7 @@ function Room() {
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [showUserList, setShowUserList] = useState(false);
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+    const toast = useToast();
 
     useEffect(() => {
         const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -43,8 +45,8 @@ function Room() {
 
         // Listen to being kicked
         socket.on('you_were_kicked', () => {
-            alert('You were removed from the room by the host.');
-            navigate('/');
+            toast('You were removed from the room by the host.', 'error', 5000);
+            setTimeout(() => navigate('/'), 1500);
         });
 
         return () => {
@@ -58,7 +60,7 @@ function Room() {
 
     const copyRoomCode = () => {
         navigator.clipboard.writeText(`${window.location.origin}/room/${roomId}`);
-        alert('Invite link copied!');
+        toast('Invite link copied!', 'success');
     };
 
     const handleKick = (targetSocketId) => {

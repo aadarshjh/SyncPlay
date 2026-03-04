@@ -3,11 +3,13 @@ import { useRoomStore } from '../store/useRoomStore';
 import { Music, Upload, Loader2, X } from 'lucide-react';
 import { socket } from '../lib/socket';
 import { supabase } from '../lib/supabase';
+import { useToast } from '../components/Toast';
 
 function Queue({ isHost, roomId }) {
     const { queue, currentSong, username } = useRoomStore();
     const fileInputRef = useRef(null);
     const [isUploading, setIsUploading] = useState(false);
+    const toast = useToast();
 
     const handleRemoveFromQueue = (songId) => {
         socket.emit('remove_from_queue', { roomId, songId });
@@ -18,7 +20,7 @@ function Queue({ isHost, roomId }) {
         if (!file) return;
 
         if (!file.type.startsWith('audio/')) {
-            alert('Please upload an audio file (.mp3, .wav, etc)');
+            toast('Please upload an audio file (.mp3, .wav, etc)', 'error');
             return;
         }
 
@@ -56,7 +58,7 @@ function Queue({ isHost, roomId }) {
             });
 
         } catch (err) {
-            alert(err.message || "Failed to upload file");
+            toast(err.message || 'Failed to upload file', 'error');
         } finally {
             setIsUploading(false);
             if (fileInputRef.current) fileInputRef.current.value = '';

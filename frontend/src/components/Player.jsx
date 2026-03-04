@@ -3,6 +3,7 @@ import ReactPlayer from 'react-player';
 import { Play, Pause, SkipForward, Search, Volume2, VolumeX, MonitorPlay, Music2 } from 'lucide-react';
 import { socket } from '../lib/socket';
 import { useRoomStore } from '../store/useRoomStore';
+import { useToast } from '../components/Toast';
 
 // Detect mobile - iOS/Android block JS volume control via hardware policy
 const isMobileBrowser = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
@@ -10,6 +11,7 @@ const isMobileBrowser = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 function Player({ isHost, roomId }) {
     const { currentSong, isPlaying, currentTime } = useRoomStore();
     const playerRef = useRef(null);
+    const toast = useToast();
     const [searchInput, setSearchInput] = useState('');
     const [volume, setVolume] = useState(0.8);
     const [isMuted, setIsMuted] = useState(false);
@@ -83,7 +85,7 @@ function Player({ isHost, roomId }) {
                 }
             } catch (err) {
                 console.error("Search failed:", err);
-                alert("Search failed. Please try again.");
+                toast('Search failed. Please try again.', 'error');
             } finally {
                 setIsSearching(false);
             }

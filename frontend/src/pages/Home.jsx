@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { PlusCircle, LogIn } from 'lucide-react';
+import { PlusCircle, LogIn, AlertCircle } from 'lucide-react';
 import { useRoomStore } from '../store/useRoomStore';
+import { useToast } from '../components/Toast';
 
 function Home() {
     const [username, setUsernameInput] = useState('');
@@ -9,8 +10,7 @@ function Home() {
     const [roomIdToJoin, setRoomIdToJoin] = useState(roomId || '');
     const navigate = useNavigate();
     const setStoreUsername = useRoomStore((state) => state.setUsername);
-
-    // If a user clicks an invite link, automatically start joining flow when they enter a name
+    const toast = useToast();
     const isInviteLink = !!roomId;
 
     const generateRoomId = () => {
@@ -19,8 +19,7 @@ function Home() {
 
     const handleCreateRoom = (e) => {
         e.preventDefault();
-        if (!username.trim()) return alert("Please enter a username");
-
+        if (!username.trim()) return toast('Please enter a username', 'error');
         setStoreUsername(username);
         const newRoomId = generateRoomId();
         navigate(`/room/${newRoomId}`);
@@ -28,9 +27,8 @@ function Home() {
 
     const handleJoinRoom = (e) => {
         e.preventDefault();
-        if (!username.trim()) return alert("Please enter a username");
-        if (!roomIdToJoin.trim()) return alert("Please enter a room code");
-
+        if (!username.trim()) return toast('Please enter a username', 'error');
+        if (!roomIdToJoin.trim()) return toast('Please enter a room code', 'error');
         setStoreUsername(username);
         navigate(`/room/${roomIdToJoin.toUpperCase()}`);
     };
