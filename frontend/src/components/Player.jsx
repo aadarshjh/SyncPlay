@@ -104,17 +104,23 @@ function Player({ isHost, roomId }) {
         <div className="flex flex-col items-center w-full">
 
             {/* Search Bar / Add Song */}
-            <div className="w-full max-w-2xl mb-4 sm:mb-8 flex gap-2 flex-col relative">
-                <form onSubmit={handleSearchYoutube} className="w-full relative">
-                    <Search className="w-5 h-5 absolute left-3 top-3.5 text-zinc-500" />
-                    <input
-                        type="text"
-                        value={searchInput}
-                        onChange={(e) => setSearchInput(e.target.value)}
-                        className="w-full bg-zinc-900 border border-zinc-700/50 rounded-xl pl-10 pr-20 py-3 text-white focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all placeholder:text-zinc-600 shadow-inner text-base"
-                        placeholder="Search or paste YouTube URL..."
-                    />
-                    <button type="submit" disabled={isSearching} className="absolute right-2 top-1.5 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-800 disabled:text-zinc-400 px-4 py-2 rounded-lg text-sm font-semibold transition-colors touch-target">
+            <div className="w-full max-w-2xl mb-4 sm:mb-8 relative">
+                <form onSubmit={handleSearchYoutube} className="flex gap-2">
+                    <div className="relative flex-1">
+                        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" />
+                        <input
+                            type="text"
+                            value={searchInput}
+                            onChange={(e) => setSearchInput(e.target.value)}
+                            className="w-full bg-zinc-900 border border-zinc-700/50 rounded-xl pl-9 pr-3 py-3 text-white focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all placeholder:text-zinc-600 shadow-inner text-sm sm:text-base"
+                            placeholder="Search YouTube or paste URL..."
+                        />
+                    </div>
+                    <button
+                        type="submit"
+                        disabled={isSearching}
+                        className="flex-shrink-0 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-900 disabled:text-zinc-500 px-5 py-3 rounded-xl text-sm font-semibold transition-colors whitespace-nowrap"
+                    >
                         {isSearching ? '...' : 'Add'}
                     </button>
                 </form>
