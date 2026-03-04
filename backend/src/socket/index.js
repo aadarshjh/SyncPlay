@@ -311,7 +311,7 @@ export default function handleSockets(io) {
         });
 
         // Disconnect
-        socket.on('disconnect', () => {
+        socket.on('disconnect', async () => {
             console.log(`User disconnected: ${socket.id}`);
             // Find which room the user was in and remove them
             for (const roomId in rooms) {
@@ -325,17 +325,23 @@ export default function handleSockets(io) {
                     socket.to(roomId).emit('user_left', user);
                     io.to(roomId).emit('users_updated', room.users);
 
-                    // Reassign host if the host left
-                    if (room.hostId === socket.id) {
-                        if (room.users.length > 0) {
-                            room.hostId = room.users[0].id;
-                            io.to(roomId).emit('host_changed', { newHostId: room.hostId });
-                        } else {
-                            // Delete room if empty
-                            delete rooms[roomId];
-                            console.log(`Room ${roomId} deleted because it is empty.`);
+                    if (room.users.length === 0) {
+                        // Delete room if empty
+                        delete rooms[roomId];
+                        console.log(`Room ${roomId} deleted from memory because it is empty.`);
+                        // Also delete from Supabase so it doesn't linger in the public lobby
+                        try {
+                            await supabase.from('rooms').delete().eq('id', roomId);
+                            console.log(`Room ${roomId} deleted from database.`);
+                        } catch (err) {
+                            console.error(`Failed to delete room ${roomId} from DB:`, err);
                         }
+                    } else if (room.hostId === socket.id) {
+                        // Reassign host if the host left and there are still users
+                        room.hostId = room.users[0].id;
+                        io.to(roomId).emit('host_changed', { newHostId: room.hostId });
                     }
+
                     break; // User is only in one room at a time in our architecture
                 }
             }
