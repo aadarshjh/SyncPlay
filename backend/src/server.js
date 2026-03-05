@@ -1,14 +1,12 @@
+import 'dotenv/config';  // MUST be first — loads .env before any other module reads process.env
 import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import handleSockets from './socket/index.js';
 import apiRoutes from './routes/index.js';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
-
-dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
