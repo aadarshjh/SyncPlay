@@ -53,11 +53,16 @@ export const useRoomStore = create((set) => ({
     resetStore: () => set({
         roomId: null,
         hostId: null,
+        roles: {},
         users: [],
         queue: [],
+        pendingRequests: [],
+        history: [],
         currentSong: null,
         isPlaying: false,
         currentTime: 0,
+        loopMode: false,
+        autoPlay: false,
         messages: [],
         typingUsers: [],
     })

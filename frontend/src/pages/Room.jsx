@@ -142,6 +142,12 @@ function Room() {
         toast('Promoted to Co-Host!', 'success');
     };
 
+    const handleDemoteCoHost = (targetSocketId) => {
+        socket.emit('demote_cohost', { roomId, targetSocketId });
+        setShowUserList(false);
+        toast('Co-Host demoted', 'info');
+    };
+
     const isHost = socket.id === hostId;
     const isCoHost = roles[socket.id] === 'co-host';
     const isAuthorized = isHost || isCoHost;
