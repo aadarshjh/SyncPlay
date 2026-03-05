@@ -238,60 +238,100 @@ export default function handleSockets(io) {
                                 return;
                             }
 
-                            // Build a prompt using the last 10 songs in history to establish the "vibe"
-                            const recentHistory = room.history.slice(0, 10).map(s => `${s.title} by ${s.author || 'Unknown'}`);
+                            // Build a prompt using the last 15 songs in history to establish the "vibe"
+                            const recentHistory = room.history.slice(0, 15).map(s => `${s.title} by ${s.author || 'Unknown'}`);
 
                             const prompt = `
-                            You are an expert DJ for a music sync app.
+                            You are an expert, world-class DJ for a collaborative music listening app.
                             The users in this room just finished listening to the following songs:
                             ${recentHistory.join('\n')}
                             
                             The last song played was: ${prevSong.title} by ${prevSong.author || 'Unknown'}
                             
-                            Based on these vibes, suggest EXACTLY ONE highly relevant song that they should listen to next.
-                            DO NOT suggest any of the songs listed above.
-                            Your response MUST BE ONLY the song title and artist format: "Title - Artist"
-                            Do not add any quotes, markdown, or extra text.
+                            Based on these vibes, suggest exactly 3 highly relevant songs that they should listen to next.
+                            - DO NOT suggest any of the songs listed in the history above.
+                            - Ensure the genre and energy level transitions smoothly from the last played song.
+                            - Avoid overly generic top-40 unless it perfectly fits the niche.
+                            
+                            Return the result as a JSON array of objects, where each object has "title" and "artist" string properties.
+                            Focus purely on the data.
                             `;
 
-                            // 1. Get recommendation from Gemini
+                            // 1. Get recommendation from Gemini with Structured Output
                             const response = await ai.models.generateContent({
                                 model: 'gemini-2.5-pro',
                                 contents: prompt,
+                                config: {
+                                    responseMimeType: "application/json",
+                                }
                             });
 
-                            const aiSuggestion = response.text.trim();
-                            console.log(`[Room ${roomId}] AI DJ suggests: ${aiSuggestion}`);
+                            let suggestions = [];
+                            try {
+                                suggestions = JSON.parse(response.text.trim());
+                            } catch (e) {
+                                console.error("Failed to parse Gemini JSON:", e, response.text);
+                                return;
+                            }
 
-                            // 2. Search YouTube for that exact suggestion
-                            const r = await ytSearch(aiSuggestion);
+                            console.log(`[Room ${roomId}] AI DJ suggests:`, suggestions);
 
-                            if (r && r.videos && r.videos.length > 0) {
-                                const nextVideo = r.videos[0]; // Take the very first result from the AI's strict suggestion
+                            // 2. Search YouTube and find the first good match
+                            let nextVideo = null;
+                            const historyTitles = room.history.map(h => h.title.toLowerCase());
+                            const historyUrls = room.history.map(h => h.url);
 
-                                if (nextVideo && rooms[roomId] && rooms[roomId].queue.length === 0 && !rooms[roomId].currentSong) {
-                                    room.currentSong = {
-                                        id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-                                        title: nextVideo.title,
-                                        url: nextVideo.url,
-                                        addedBy: 'Gemini AI ✨',
-                                        thumbnail: nextVideo.thumbnail,
-                                        type: 'youtube',
-                                        author: nextVideo.author?.name
-                                    };
-                                    room.isPlaying = true;
-                                    room.currentTime = 0;
-                                    io.to(roomId).emit('room_state', room);
+                            for (const suggestion of suggestions) {
+                                if (nextVideo) break;
 
-                                    io.to(roomId).emit('receive_message', {
-                                        id: Date.now().toString(),
-                                        username: 'System',
-                                        text: `✨ AI DJ Queued: ${nextVideo.title}`,
-                                        timestamp: new Date()
-                                    });
+                                const query = `${suggestion.title} ${suggestion.artist}`;
+                                const r = await ytSearch(query);
+
+                                if (r && r.videos && r.videos.length > 0) {
+                                    // Try to find a video that isn't a cover/karaoke and hasn't been played
+                                    for (const v of r.videos.slice(0, 5)) {
+                                        const vTitleLow = v.title.toLowerCase();
+
+                                        // Skip if we've already played this exact URL
+                                        if (historyUrls.includes(v.url)) continue;
+
+                                        // Skip if it looks like a karaoke/cover/live version unless asked for
+                                        if (vTitleLow.includes('karaoke') || vTitleLow.includes('cover') || vTitleLow.includes('live at')) continue;
+
+                                        // Skip if the title is too similar to something in history
+                                        const isDuplicateInfo = historyTitles.some(ht =>
+                                            (ht.includes(suggestion.title.toLowerCase()) && ht.includes(suggestion.artist.toLowerCase()))
+                                        );
+                                        if (isDuplicateInfo) continue;
+
+                                        nextVideo = v;
+                                        break;
+                                    }
                                 }
+                            }
+
+                            if (nextVideo && rooms[roomId] && rooms[roomId].queue.length === 0 && !rooms[roomId].currentSong) {
+                                room.currentSong = {
+                                    id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+                                    title: nextVideo.title,
+                                    url: nextVideo.url,
+                                    addedBy: 'Gemini AI ✨',
+                                    thumbnail: nextVideo.thumbnail,
+                                    type: 'youtube',
+                                    author: nextVideo.author?.name
+                                };
+                                room.isPlaying = true;
+                                room.currentTime = 0;
+                                io.to(roomId).emit('room_state', room);
+
+                                io.to(roomId).emit('receive_message', {
+                                    id: Date.now().toString(),
+                                    username: 'System',
+                                    text: `✨ AI DJ Queued: ${nextVideo.title}`,
+                                    timestamp: new Date()
+                                });
                             } else {
-                                console.log("AI DJ: ytSearch returned no results for:", aiSuggestion);
+                                console.log("AI DJ: Could not find any suitable videos for suggestions:", suggestions);
                             }
                         } catch (err) {
                             console.error("Auto-Play search error:", err);
