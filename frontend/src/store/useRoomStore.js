@@ -14,6 +14,7 @@ export const useRoomStore = create((set) => ({
     isPlaying: false,
     currentTime: 0,
     loopMode: false,
+    autoPlay: false, // AI DJ
     messages: [],
     typingUsers: [],
 
@@ -32,6 +33,7 @@ export const useRoomStore = create((set) => ({
         isPlaying: state.isPlaying || false,
         currentTime: state.currentTime || 0,
         loopMode: state.loopMode || false,
+        autoPlay: state.autoPlay || false,
     }),
     setUsers: (users) => set({ users }),
     setQueue: (queue) => set({ queue }),

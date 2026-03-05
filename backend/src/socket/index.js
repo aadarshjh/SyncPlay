@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase.js';
+import ytSearch from 'yt-search';
 
 // In-memory room state storage
 // For production scale, you'd use Redis, but an object works perfectly for a college project
@@ -49,6 +50,7 @@ export default function handleSockets(io) {
                         isPlaying: false,
                         currentTime: 0,
                         loopMode: false, // Repeat all active
+                        autoPlay: false, // AI DJ
                     };
                 }
             }
@@ -187,7 +189,7 @@ export default function handleSockets(io) {
         });
 
         // Queue Management: Skip song (also handles natural song end)
-        socket.on('skip_song', ({ roomId }) => {
+        socket.on('skip_song', async ({ roomId }) => {
             if (rooms[roomId]) {
                 const room = rooms[roomId];
                 const role = room.roles[socket.id];
@@ -211,12 +213,50 @@ export default function handleSockets(io) {
                     room.currentSong = room.queue.shift(); // Play next
                     room.currentTime = 0;
                     room.isPlaying = true;
+                    io.to(roomId).emit('room_state', room);
                 } else {
                     room.currentSong = null; // Nothing left
                     room.isPlaying = false;
                     room.currentTime = 0;
+                    io.to(roomId).emit('room_state', room);
+
+                    // Auto-Play (AI DJ)
+                    if (room.autoPlay && prevSong) {
+                        try {
+                            const searchQuery = `${prevSong.title} ${prevSong.author || ''}`.trim();
+                            const r = await ytSearch(searchQuery);
+                            if (r && r.videos && r.videos.length > 0) {
+                                const historyUrls = room.history.map(h => h.url);
+                                // Find top video not already played
+                                const nextVideo = r.videos.find(v => !historyUrls.includes(v.url));
+
+                                if (nextVideo && rooms[roomId] && rooms[roomId].queue.length === 0 && !rooms[roomId].currentSong) {
+                                    room.currentSong = {
+                                        id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+                                        title: nextVideo.title,
+                                        url: nextVideo.url,
+                                        addedBy: 'AI DJ',
+                                        thumbnail: nextVideo.thumbnail,
+                                        type: 'youtube',
+                                        author: nextVideo.author?.name
+                                    };
+                                    room.isPlaying = true;
+                                    room.currentTime = 0;
+                                    io.to(roomId).emit('room_state', room);
+
+                                    io.to(roomId).emit('receive_message', {
+                                        id: Date.now().toString(),
+                                        username: 'System',
+                                        text: `🤖 AI DJ queued: ${nextVideo.title}`,
+                                        timestamp: new Date()
+                                    });
+                                }
+                            }
+                        } catch (err) {
+                            console.error("Auto-Play search error:", err);
+                        }
+                    }
                 }
-                io.to(roomId).emit('room_state', room);
             }
         });
 
@@ -248,6 +288,25 @@ export default function handleSockets(io) {
             }
         });
 
+        // Auto-Play Toggle
+        socket.on('toggle_autoplay', ({ roomId, autoPlay }) => {
+            if (rooms[roomId]) {
+                const room = rooms[roomId];
+                const role = room.roles[socket.id];
+                if (role !== 'host' && role !== 'co-host') return;
+
+                room.autoPlay = autoPlay;
+                io.to(roomId).emit('room_state', room);
+
+                io.to(roomId).emit('receive_message', {
+                    id: Date.now().toString(),
+                    username: 'System',
+                    text: `🤖 AI DJ (Auto-Play) is now ${autoPlay ? 'ON' : 'OFF'}.`,
+                    timestamp: new Date()
+                });
+            }
+        });
+
         // Queue Management: Remove a specific song from queue
         socket.on('remove_from_queue', ({ roomId, songId }) => {
             if (rooms[roomId]) {
@@ -270,6 +329,25 @@ export default function handleSockets(io) {
                     id: Date.now().toString(),
                     username: 'System',
                     text: `You have been promoted to Co-Host. You can now control playback.`,
+                    timestamp: new Date()
+                });
+            }
+        });
+
+        // User Roles: Demote Co-Host
+        socket.on('demote_cohost', ({ roomId, targetSocketId }) => {
+            if (rooms[roomId] && rooms[roomId].hostId === socket.id) {
+                delete rooms[roomId].roles[targetSocketId];
+                // Send targeted update that user is guest
+                io.to(targetSocketId).emit('role_updated', 'guest');
+                // Broadcast room state
+                io.to(roomId).emit('room_state', rooms[roomId]);
+
+                // Alert the target user
+                io.to(targetSocketId).emit('receive_message', {
+                    id: Date.now().toString(),
+                    username: 'System',
+                    text: `Your Co-Host privileges have been revoked.`,
                     timestamp: new Date()
                 });
             }

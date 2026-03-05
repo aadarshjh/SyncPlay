@@ -230,13 +230,21 @@ function Room() {
                                             {/* Host Management Actions */}
                                             {isHost && user.id !== socket.id && (
                                                 <div className="flex items-center gap-1">
-                                                    {roles[user.id] !== 'co-host' && (
+                                                    {roles[user.id] !== 'co-host' ? (
                                                         <button
                                                             onClick={() => handleMakeCoHost(user.id)}
                                                             className="text-[10px] font-bold text-zinc-400 hover:text-purple-400 hover:bg-purple-500/10 px-1.5 py-1 rounded transition-colors"
                                                             title={`Make ${user.username} a Co-Host`}
                                                         >
                                                             Promote
+                                                        </button>
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => handleDemoteCoHost(user.id)}
+                                                            className="text-[10px] font-bold text-zinc-400 hover:text-orange-400 hover:bg-orange-500/10 px-1.5 py-1 rounded transition-colors"
+                                                            title={`Remove Co-Host from ${user.username}`}
+                                                        >
+                                                            Demote
                                                         </button>
                                                     )}
                                                     <button

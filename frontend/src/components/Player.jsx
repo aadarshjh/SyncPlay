@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import ReactPlayer from 'react-player';
-import { Play, Pause, SkipForward, Search, Volume2, VolumeX, MonitorPlay, Music2, Repeat, Shuffle } from 'lucide-react';
+import { Play, Pause, SkipForward, Search, Volume2, VolumeX, MonitorPlay, Music2, Repeat, Shuffle, Sparkles } from 'lucide-react';
 import { socket } from '../lib/socket';
 import { useRoomStore } from '../store/useRoomStore';
 import { useToast } from '../components/Toast';
@@ -17,7 +17,7 @@ const formatTime = (secs) => {
 };
 
 function Player({ isHost, isAuthorized, roomId }) {
-    const { currentSong, isPlaying, currentTime, queue, loopMode } = useRoomStore();
+    const { currentSong, isPlaying, currentTime, queue, loopMode, autoPlay } = useRoomStore();
     const playerRef = useRef(null);
     const toast = useToast();
     const [searchInput, setSearchInput] = useState('');
@@ -63,6 +63,11 @@ function Player({ isHost, isAuthorized, roomId }) {
         if (!isAuthorized) return;
         // Debounce seek emits in a real app, here we emit simply
         socket.emit('seek_time', { roomId, currentTime: parseFloat(e) });
+    };
+
+    const handleToggleAutoPlay = () => {
+        if (!isAuthorized) return;
+        socket.emit('toggle_autoplay', { roomId, autoPlay: !autoPlay });
     };
 
     const handleSkip = () => {
@@ -410,6 +415,20 @@ function Player({ isHost, isAuthorized, roomId }) {
                                 }`}
                         >
                             <Repeat className="w-5 h-5 sm:w-6 sm:h-6" />
+                        </button>
+
+                        <button
+                            onClick={handleToggleAutoPlay}
+                            disabled={!isAuthorized}
+                            title={autoPlay ? "Auto-Play (AI DJ) is On" : "Auto-Play (AI DJ) is Off"}
+                            className={`p-3 rounded-full flex items-center justify-center transition-all ${!isAuthorized
+                                ? 'text-zinc-700 cursor-not-allowed hidden sm:flex'
+                                : autoPlay
+                                    ? 'text-yellow-400 bg-yellow-500/10 hover:bg-yellow-500/20 active:scale-95'
+                                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800 active:scale-95'
+                                }`}
+                        >
+                            <Sparkles className="w-5 h-5 sm:w-6 sm:h-6" />
                         </button>
                     </div>
 
