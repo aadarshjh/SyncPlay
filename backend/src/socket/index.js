@@ -1,5 +1,9 @@
 import { supabase } from '../lib/supabase.js';
 import ytSearch from 'yt-search';
+import { GoogleGenAI } from '@google/genai';
+
+// Initialize Gemini Client
+const ai = process.env.GEMINI_API_KEY ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }) : null;
 
 // In-memory room state storage
 // For production scale, you'd use Redis, but an object works perfectly for a college project
@@ -223,19 +227,54 @@ export default function handleSockets(io) {
                     // Auto-Play (AI DJ)
                     if (room.autoPlay && prevSong) {
                         try {
-                            const searchQuery = `${prevSong.title} ${prevSong.author || ''}`.trim();
-                            const r = await ytSearch(searchQuery);
+                            if (!ai) {
+                                console.error("Auto-Play Failed: GEMINI_API_KEY is not set.");
+                                io.to(roomId).emit('receive_message', {
+                                    id: Date.now().toString(),
+                                    username: 'System',
+                                    text: `❌ AI DJ Error: Gemini API key is missing.`,
+                                    timestamp: new Date()
+                                });
+                                return;
+                            }
+
+                            // Build a prompt using the last 10 songs in history to establish the "vibe"
+                            const recentHistory = room.history.slice(0, 10).map(s => `${s.title} by ${s.author || 'Unknown'}`);
+
+                            const prompt = `
+                            You are an expert DJ for a music sync app.
+                            The users in this room just finished listening to the following songs:
+                            ${recentHistory.join('\n')}
+                            
+                            The last song played was: ${prevSong.title} by ${prevSong.author || 'Unknown'}
+                            
+                            Based on these vibes, suggest EXACTLY ONE highly relevant song that they should listen to next.
+                            DO NOT suggest any of the songs listed above.
+                            Your response MUST BE ONLY the song title and artist format: "Title - Artist"
+                            Do not add any quotes, markdown, or extra text.
+                            `;
+
+                            // 1. Get recommendation from Gemini
+                            const response = await ai.models.generateContent({
+                                model: 'gemini-2.5-pro',
+                                contents: prompt,
+                            });
+
+                            const aiSuggestion = response.text.trim();
+                            console.log(`[Room ${roomId}] AI DJ suggests: ${aiSuggestion}`);
+
+                            // 2. Search YouTube for that exact suggestion
+                            const r = await ytSearch(aiSuggestion);
+
                             if (r && r.videos && r.videos.length > 0) {
-                                const historyUrls = room.history.map(h => h.url);
-                                // Find top video not already played
-                                const nextVideo = r.videos.find(v => !historyUrls.includes(v.url));
+                                const nextVideo = r.videos[0]; // Take the very first result from the AI's strict suggestion
 
                                 if (nextVideo && rooms[roomId] && rooms[roomId].queue.length === 0 && !rooms[roomId].currentSong) {
                                     room.currentSong = {
                                         id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
                                         title: nextVideo.title,
                                         url: nextVideo.url,
-                                        addedBy: 'AI DJ',
+                                        addedBy: 'Gemini AI ✨',
                                         thumbnail: nextVideo.thumbnail,
                                         type: 'youtube',
                                         author: nextVideo.author?.name
@@ -247,10 +286,12 @@ export default function handleSockets(io) {
                                     io.to(roomId).emit('receive_message', {
                                         id: Date.now().toString(),
                                         username: 'System',
-                                        text: `🤖 AI DJ queued: ${nextVideo.title}`,
+                                        text: `✨ AI DJ Queued: ${nextVideo.title}`,
                                         timestamp: new Date()
                                     });
                                 }
+                            } else {
+                                console.log("AI DJ: ytSearch returned no results for:", aiSuggestion);
                             }
                         } catch (err) {
                             console.error("Auto-Play search error:", err);
