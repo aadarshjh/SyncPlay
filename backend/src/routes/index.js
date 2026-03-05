@@ -1,6 +1,9 @@
 import express from 'express';
 import ytSearch from 'yt-search';
+import { GoogleGenAI } from '@google/genai';
 import { supabase } from '../lib/supabase.js';
+
+const ai = process.env.GEMINI_API_KEY ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }) : null;
 
 const router = express.Router();
 
@@ -30,20 +33,30 @@ router.get('/search', async (req, res) => {
     }
 });
 
-// Proxy lyrics.ovh to avoid CORS issues from the browser
+// Gemini-powered lyrics lookup
 router.get('/lyrics', async (req, res) => {
     try {
         const { artist, title } = req.query;
         if (!artist || !title) return res.status(400).json({ error: 'artist and title are required' });
 
-        const url = `https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(title)}`;
-        const response = await fetch(url);
-        const data = await response.json();
+        if (!ai) {
+            console.error('Lyrics Error: GEMINI_API_KEY is not set.');
+            return res.json({ lyrics: null });
+        }
 
-        if (data.lyrics) {
-            res.json({ lyrics: data.lyrics });
-        } else {
+        const prompt = `You are a lyrics database. Return ONLY the full song lyrics for "${title}" by "${artist}". Do not include any commentary, explanations, headers, or formatting — just the raw lyrics text, line by line. If you genuinely do not know the lyrics for this specific song, respond with exactly: LYRICS_NOT_FOUND`;
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.0-flash',
+            contents: prompt,
+        });
+
+        const text = response.text?.trim();
+
+        if (!text || text === 'LYRICS_NOT_FOUND') {
             res.json({ lyrics: null });
+        } else {
+            res.json({ lyrics: text });
         }
     } catch (error) {
         console.error('Lyrics Error:', error);
