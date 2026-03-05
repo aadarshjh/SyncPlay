@@ -33,33 +33,69 @@ router.get('/search', async (req, res) => {
     }
 });
 
-// Gemini-powered lyrics lookup
+// Multi-source lyrics lookup: lrclib.net (free) → Gemini (fallback)
 router.get('/lyrics', async (req, res) => {
     try {
-        const { artist, title } = req.query;
-        if (!artist || !title) return res.status(400).json({ error: 'artist and title are required' });
+        const { q } = req.query;
+        if (!q) return res.status(400).json({ error: 'q (song query) is required' });
 
-        if (!ai) {
-            console.error('Lyrics Error: GEMINI_API_KEY is not set.');
-            return res.json({ lyrics: null });
+        // Clean the query: strip common YouTube suffixes
+        const cleanQuery = q
+            .replace(/\(official\s*(music\s*)?video\)/gi, '')
+            .replace(/\(official\s*audio\)/gi, '')
+            .replace(/\(lyrics?\)/gi, '')
+            .replace(/\[.*?\]/g, '')
+            .replace(/\(.*?remaster.*?\)/gi, '')
+            .replace(/\(.*?HD.*?\)/gi, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        // --- Source 1: lrclib.net (free, no API key needed) ---
+        try {
+            const lrcRes = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(cleanQuery)}`);
+            if (lrcRes.ok) {
+                const lrcData = await lrcRes.json();
+                if (lrcData && lrcData.length > 0) {
+                    // Prefer plain lyrics over synced lyrics
+                    const best = lrcData[0];
+                    const lyrics = best.plainLyrics || best.syncedLyrics;
+                    if (lyrics && lyrics.trim().length > 20) {
+                        console.log(`[Lyrics] Found via lrclib.net for: "${cleanQuery}"`);
+                        return res.json({ lyrics: lyrics.trim() });
+                    }
+                }
+            }
+        } catch (err) {
+            console.log('[Lyrics] lrclib.net failed, trying Gemini fallback...', err.message);
         }
 
-        const prompt = `You are a lyrics database. Return ONLY the full song lyrics for "${title}" by "${artist}". Do not include any commentary, explanations, headers, or formatting — just the raw lyrics text, line by line. If you genuinely do not know the lyrics for this specific song, respond with exactly: LYRICS_NOT_FOUND`;
+        // --- Source 2: Gemini AI (fallback) ---
+        if (ai) {
+            const prompt = `You are a lyrics database. The user searched for: "${cleanQuery}"
+Identify the song and return ONLY the full song lyrics, line by line.
+Do NOT include the song title, artist name, section headers like [Chorus], or any commentary.
+Just the raw lyrics text.
+If you cannot identify the song or do not know the lyrics, respond with exactly: LYRICS_NOT_FOUND`;
 
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.0-flash',
-            contents: prompt,
-        });
-
-        const text = response.text?.trim();
-
-        if (!text || text === 'LYRICS_NOT_FOUND') {
-            res.json({ lyrics: null });
-        } else {
-            res.json({ lyrics: text });
+            try {
+                const response = await ai.models.generateContent({
+                    model: 'gemini-2.5-flash',
+                    contents: prompt,
+                });
+                const text = response.text?.trim();
+                if (text && !text.includes('LYRICS_NOT_FOUND')) {
+                    console.log(`[Lyrics] Found via Gemini for: "${cleanQuery}"`);
+                    return res.json({ lyrics: text });
+                }
+            } catch (err) {
+                console.log('[Lyrics] Gemini fallback failed:', err.message);
+            }
         }
+
+        // No lyrics found from any source
+        res.json({ lyrics: null });
     } catch (error) {
-        console.error('Lyrics Error:', error);
+        console.error('Lyrics Error:', error?.message || error);
         res.json({ lyrics: null });
     }
 });

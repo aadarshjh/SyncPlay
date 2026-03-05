@@ -107,16 +107,9 @@ function Player({ isHost, isAuthorized, roomId }) {
         setLyrics(null);
         setShowLyrics(true);
         try {
-            // Parse "Artist - Song Title (Official Video)" → artist + clean title
-            const parts = title.split('-');
-            const artist = parts.length > 1 ? parts[0].trim() : title;
-            const song = parts.length > 1 ? parts.slice(1).join('-').trim() : title;
-            // Strip YouTube suffixes: (Official Video), [Lyrics], etc.
-            const cleanSong = song.replace(/\(.*?\)/g, '').replace(/\[.*?\]/g, '').trim();
-
             const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
             const res = await fetch(
-                `${serverUrl}/api/lyrics?artist=${encodeURIComponent(artist)}&title=${encodeURIComponent(cleanSong)}`
+                `${serverUrl}/api/lyrics?q=${encodeURIComponent(title)}`
             );
             const data = await res.json();
             setLyrics(data.lyrics || null);
