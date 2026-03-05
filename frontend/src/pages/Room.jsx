@@ -148,19 +148,19 @@ function Room() {
 
     const sidebarContent = (
         <>
-            <div className="flex-shrink-0 h-12 flex border-b border-zinc-800">
+            <div className="flex-shrink-0 h-14 flex border-b border-white/10 bg-black/20">
                 <button
-                    className={`flex-1 font-semibold text-sm transition-colors border-b-2 flex items-center justify-center gap-2 ${activeTab === 'chat' ? 'border-purple-500 text-purple-400 bg-purple-500/5' : 'border-transparent text-zinc-500 hover:text-zinc-300'}`}
+                    className={`flex-1 font-bold text-xs uppercase tracking-widest transition-all border-b-2 flex items-center justify-center gap-2 ${activeTab === 'chat' ? 'border-purple-500 text-purple-400 bg-purple-500/10 shadow-inner' : 'border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-white/5'}`}
                     onClick={() => setActiveTab('chat')}
                 >
                     <MessageSquare className="w-4 h-4" /> Chat
                 </button>
                 <button
-                    className={`flex-1 font-semibold text-sm transition-colors border-b-2 flex items-center justify-center gap-2 ${activeTab === 'queue' ? 'border-blue-500 text-blue-400 bg-blue-500/5' : 'border-transparent text-zinc-500 hover:text-zinc-300'}`}
+                    className={`flex-1 font-bold text-xs uppercase tracking-widest transition-all border-b-2 flex items-center justify-center gap-2 ${activeTab === 'queue' ? 'border-blue-500 text-blue-400 bg-blue-500/10 shadow-inner' : 'border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-white/5'}`}
                     onClick={() => setActiveTab('queue')}
                 >
                     <ListMusic className="w-4 h-4" />
-                    Queue {queue.length > 0 && <span className="bg-blue-500/20 text-blue-400 text-[10px] px-1.5 py-0.5 rounded-full">{queue.length}</span>}
+                    Queue {queue.length > 0 && <span className="bg-blue-500 text-white text-[10px] px-2 py-0.5 rounded-full drop-shadow-md">{queue.length}</span>}
                 </button>
             </div>
             <div className="flex-1 overflow-hidden flex flex-col">
@@ -170,35 +170,35 @@ function Room() {
     );
 
     return (
-        <div className="h-screen flex flex-col bg-zinc-950 overflow-hidden">
+        <div className="h-screen flex flex-col bg-transparent overflow-hidden">
 
             {/* Header */}
-            <header className="flex-shrink-0 h-14 px-3 sm:px-6 border-b border-zinc-800 flex items-center justify-between bg-zinc-950 z-20">
-                <div className="flex items-center gap-2 sm:gap-4">
-                    <h1 className="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-blue-400 hidden sm:block">SyncPlay</h1>
-                    <button onClick={copyRoomCode} className="flex items-center gap-1.5 bg-zinc-900 px-2.5 py-1.5 rounded-lg border border-zinc-800 hover:border-zinc-600 transition-colors">
-                        <span className="font-mono font-bold text-white text-sm tracking-wider">{roomId}</span>
-                        <Copy className="w-3.5 h-3.5 text-zinc-500" />
+            <header className="flex-shrink-0 h-16 px-4 md:px-8 border-b border-white/10 flex items-center justify-between bg-black/40 backdrop-blur-xl z-20 shadow-lg">
+                <div className="flex items-center gap-3 sm:gap-6">
+                    <h1 className="text-2xl font-black font-display tracking-tight bg-clip-text text-transparent bg-gradient-to-br from-white via-purple-200 to-blue-200 hidden sm:block drop-shadow-sm">SyncPlay</h1>
+                    <button onClick={copyRoomCode} className="flex items-center gap-2 bg-white/5 px-4 py-2 rounded-xl border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all shadow-inner group">
+                        <span className="font-mono font-bold text-zinc-100 text-sm tracking-widest uppercase">{roomId}</span>
+                        <Copy className="w-4 h-4 text-zinc-400 group-hover:text-white transition-colors" />
                     </button>
                     {useRoomStore.getState().user && (
                         <button
                             onClick={handleToggleFavorite}
                             disabled={isCheckingFavorite}
-                            className={`p-1.5 rounded-lg border transition-colors ${isFavorite ? 'bg-yellow-500/10 border-yellow-500/50 text-yellow-500' : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:border-zinc-600 hover:text-yellow-500/70'}`}
+                            className={`p-2.5 rounded-xl border transition-all shadow-inner ${isFavorite ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-400 shadow-[0_0_15px_rgba(234,179,8,0.3)]' : 'bg-white/5 border-white/10 text-zinc-400 hover:bg-white/10 hover:text-yellow-400'}`}
                             title={isFavorite ? "Remove from favorites" : "Save to favorites"}
                         >
                             <Star className="w-4 h-4" fill={isFavorite ? "currentColor" : "none"} />
                         </button>
                     )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                     {/* Users button - opens user list with kick */}
                     <div className="relative">
                         <button
                             onClick={() => setShowUserList(o => !o)}
-                            className="flex items-center gap-1.5 text-zinc-400 text-sm bg-zinc-900 px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 transition-colors border border-zinc-800 hover:border-zinc-700"
+                            className="flex items-center gap-2 text-zinc-300 font-bold text-sm bg-white/5 px-4 py-2 rounded-xl hover:bg-white/10 transition-all border border-white/10 shadow-inner"
                         >
-                            <Users className="w-4 h-4" />
+                            <Users className="w-4 h-4 text-purple-400" />
                             <span>{users.length}</span>
                         </button>
 
@@ -263,7 +263,7 @@ function Room() {
                         )}
                     </div>
 
-                    <button onClick={() => navigate('/')} className="text-red-400 hover:text-red-300 transition-colors p-2 hover:bg-red-500/10 rounded-lg flex items-center gap-1.5 text-sm font-medium">
+                    <button onClick={() => navigate('/')} className="text-red-400 hover:text-white hover:bg-red-500/80 transition-all px-4 py-2 bg-red-500/20 shadow-inner border border-red-500/30 rounded-xl flex items-center gap-2 text-sm font-bold">
                         <LogOut className="w-4 h-4" /><span className="hidden sm:block">Leave</span>
                     </button>
                 </div>
@@ -271,14 +271,14 @@ function Room() {
 
             {/* Main layout */}
             <div className="flex-1 flex overflow-hidden">
-                <main className="flex-1 overflow-y-auto bg-gradient-to-b from-zinc-900 to-zinc-950 p-3 sm:p-6 md:border-r md:border-zinc-800">
-                    <div className="w-full max-w-4xl mx-auto">
+                <main className="flex-1 overflow-y-auto w-full max-w-7xl mx-auto p-4 md:p-8">
+                    <div className="w-full flex justify-center">
                         <Player isAuthorized={isAuthorized} isHost={isHost} roomId={roomId} />
                     </div>
                 </main>
 
                 {!isMobile && (
-                    <aside className="flex flex-col w-80 lg:w-96 bg-zinc-950 flex-shrink-0">
+                    <aside className="flex flex-col w-[380px] bg-black/40 backdrop-blur-md border-l border-white/10 flex-shrink-0 shadow-[-10px_0_30px_rgba(0,0,0,0.5)] z-10 relative">
                         {sidebarContent}
                     </aside>
                 )}

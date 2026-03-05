@@ -4,6 +4,7 @@ import { Music, Upload, Loader2, X, Check } from 'lucide-react';
 import { socket } from '../lib/socket';
 import { supabase } from '../lib/supabase';
 import { useToast } from '../components/Toast';
+import { motion, AnimatePresence } from 'framer-motion';
 
 function Queue({ isAuthorized, isHost, roomId }) {
     const { queue, history, pendingRequests, currentSong, username } = useRoomStore();
@@ -76,18 +77,24 @@ function Queue({ isAuthorized, isHost, roomId }) {
     };
 
     return (
-        <div className="flex flex-col h-full bg-zinc-950">
-            <div className="p-4 border-b border-zinc-800 bg-zinc-900/30">
-                <h3 className="font-semibold text-sm flex items-center gap-2 text-purple-400">
-                    <Music className="w-4 h-4" /> Now Playing
+        <div className="flex flex-col h-full bg-transparent">
+            {/* ── Now Playing Mini Banner ── */}
+            <div className="p-4 border-b border-white/10 bg-black/20 backdrop-blur-md">
+                <h3 className="font-black text-[10px] uppercase tracking-widest flex items-center gap-2 text-purple-400 mb-2">
+                    <Music className="w-3.5 h-3.5" /> Now Playing
                 </h3>
                 {currentSong ? (
-                    <div className="mt-3 bg-zinc-800/50 border border-zinc-700/50 rounded-xl p-3 shadow-inner">
-                        <p className="font-medium text-sm text-white truncate">{currentSong.title}</p>
-                        <p className="text-xs text-zinc-400 mt-1">Added by {currentSong.addedBy}</p>
-                    </div>
+                    <motion.div
+                        key={currentSong.id || currentSong.title}
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-white/5 border border-white/10 rounded-xl p-3 shadow-inner flex flex-col justify-center"
+                    >
+                        <p className="font-bold text-sm text-zinc-100 truncate">{currentSong.title}</p>
+                        <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-1">Added by <span className="text-zinc-300">{currentSong.addedBy}</span></p>
+                    </motion.div>
                 ) : (
-                    <p className="text-zinc-500 text-xs mt-2 italic">Nothing playing right now</p>
+                    <p className="text-zinc-600 text-xs font-medium italic">Nothing playing right now</p>
                 )}
             </div>
 
@@ -134,38 +141,51 @@ function Queue({ isAuthorized, isHost, roomId }) {
                 {/* ── Active Queue ── */}
                 <div>
                     <div className="flex items-center justify-between mb-4">
-                        <h3 className="font-semibold text-sm text-zinc-300">Up Next</h3>
-                        <span className="text-xs font-mono bg-zinc-800 px-2 py-0.5 rounded text-zinc-400">{queue.length}</span>
+                        <h3 className="font-black text-xs uppercase tracking-widest text-zinc-300">Up Next</h3>
+                        <span className="text-[10px] font-bold bg-white/10 px-2 py-0.5 rounded-full text-zinc-300 shadow-inner">{queue.length}</span>
                     </div>
 
                     {queue.length === 0 ? (
-                        <div className="text-center text-zinc-500 text-sm border border-dashed border-zinc-800 p-8 rounded-xl">
-                            Queue is empty. <br /> Use the search bar in the player to add YouTube links.
-                        </div>
+                        <motion.div
+                            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                            className="text-center text-zinc-500 text-xs font-medium border border-dashed border-white/10 bg-white/5 p-8 rounded-2xl shadow-inner"
+                        >
+                            Queue is empty. <br /> Use the search bar to add tracks.
+                        </motion.div>
                     ) : (
-                        <ul className="space-y-2">
-                            {queue.map((song, idx) => (
-                                <li key={song.id} className="bg-zinc-900 border border-zinc-800/80 rounded-xl p-3 flex items-center justify-between group hover:border-zinc-700 transition-colors">
-                                    <div className="flex items-center gap-3 overflow-hidden">
-                                        <div className="text-xs text-zinc-600 font-mono w-4">{idx + 1}</div>
-                                        <div className="truncate">
-                                            <p className="text-sm font-medium text-zinc-200 truncate">{song.title}</p>
-                                            <p className="text-xs text-zinc-500 truncate">Added by {song.addedBy}</p>
+                        <AnimatePresence mode='popLayout'>
+                            <ul className="space-y-2">
+                                {queue.map((song, idx) => (
+                                    <motion.li
+                                        layout
+                                        initial={{ opacity: 0, scale: 0.95, x: -20 }}
+                                        animate={{ opacity: 1, scale: 1, x: 0 }}
+                                        exit={{ opacity: 0, scale: 0.95, x: 20 }}
+                                        transition={{ duration: 0.2 }}
+                                        key={song.id}
+                                        className="bg-black/40 backdrop-blur-md border border-white/10 rounded-xl p-3 flex items-center justify-between group hover:border-purple-500/50 transition-colors shadow-lg"
+                                    >
+                                        <div className="flex items-center gap-3 overflow-hidden">
+                                            <div className="text-[10px] text-zinc-600 font-bold w-4">{idx + 1}</div>
+                                            <div className="truncate">
+                                                <p className="text-sm font-bold text-zinc-200 truncate">{song.title}</p>
+                                                <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 truncate mt-0.5">Added by {song.addedBy}</p>
+                                            </div>
                                         </div>
-                                    </div>
-                                    {/* Authorized users or song-owner remove button */}
-                                    {(isAuthorized || song.addedBy === username) && (
-                                        <button
-                                            onClick={() => handleRemoveFromQueue(song.id)}
-                                            title="Remove from queue"
-                                            className="ml-2 flex-shrink-0 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all p-1 rounded-lg hover:bg-red-500/10"
-                                        >
-                                            <X className="w-4 h-4" />
-                                        </button>
-                                    )}
-                                </li>
-                            ))}
-                        </ul>
+                                        {/* Authorized users or song-owner remove button */}
+                                        {(isAuthorized || song.addedBy === username) && (
+                                            <button
+                                                onClick={() => handleRemoveFromQueue(song.id)}
+                                                title="Remove from queue"
+                                                className="ml-2 flex-shrink-0 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all p-1.5 rounded-lg hover:bg-red-500/20"
+                                            >
+                                                <X className="w-4 h-4" />
+                                            </button>
+                                        )}
+                                    </motion.li>
+                                ))}
+                            </ul>
+                        </AnimatePresence>
                     )}
                 </div>
 
@@ -201,7 +221,7 @@ function Queue({ isAuthorized, isHost, roomId }) {
                 )}
             </div>
 
-            <div className="p-4 border-t border-zinc-800 bg-zinc-900/30">
+            <div className="p-4 border-t border-white/10 bg-black/20 backdrop-blur-md">
                 <input
                     type="file"
                     accept="audio/*"
@@ -209,17 +229,19 @@ function Queue({ isAuthorized, isHost, roomId }) {
                     ref={fileInputRef}
                     onChange={handleFileUpload}
                 />
-                <button
+                <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
                     onClick={() => fileInputRef.current?.click()}
                     disabled={isUploading}
-                    className="w-full border border-dashed border-zinc-600 text-zinc-400 hover:text-white hover:border-zinc-400 transition-all rounded-xl py-3 text-sm flex items-center justify-center gap-2 group disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full border border-dashed border-white/20 bg-white/5 text-zinc-400 hover:text-white hover:border-white/40 hover:bg-white/10 transition-all rounded-xl py-3.5 text-xs font-bold uppercase tracking-widest flex items-center justify-center gap-2 group disabled:opacity-50 disabled:cursor-not-allowed shadow-inner"
                 >
                     {isUploading ? (
                         <><Loader2 className="w-4 h-4 animate-spin" /> Uploading...</>
                     ) : (
-                        <><Upload className="w-4 h-4 group-hover:-translate-y-1 transition-transform" /> Upload Local MP3</>
+                        <><Upload className="w-4 h-4 group-hover:-translate-y-1 transition-transform text-purple-400" /> Upload Local MP3</>
                     )}
-                </button>
+                </motion.button>
             </div>
         </div>
     );

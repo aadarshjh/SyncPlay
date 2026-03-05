@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { PlusCircle, LogIn, LogOut, Compass, Star } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { useRoomStore } from '../store/useRoomStore';
 import { useToast } from '../components/Toast';
 import { supabase } from '../lib/supabase';
@@ -71,47 +72,67 @@ function Home() {
         navigate(`/room/${roomIdToJoin.toUpperCase()}`);
     };
 
+    const containerVariants = {
+        hidden: { opacity: 0, y: 20 },
+        visible: {
+            opacity: 1,
+            y: 0,
+            transition: {
+                duration: 0.6,
+                staggerChildren: 0.1
+            }
+        }
+    };
+
+    const itemVariants = {
+        hidden: { opacity: 0, y: 10 },
+        visible: { opacity: 1, y: 0, transition: { duration: 0.4 } }
+    };
+
     return (
         <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
-            {/* Background decoration */}
-            <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-purple-600/20 rounded-full blur-[120px]" />
-            <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-600/20 rounded-full blur-[120px]" />
+            {/* Background decoration moved to App.jsx, but keeping relative flow here */}
 
-            <div className="glass-panel max-w-md w-full p-8 relative z-10 flex flex-col items-center">
-                <div className="w-16 h-16 bg-gradient-to-tr from-purple-500 to-blue-500 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-purple-500/20">
+            <motion.div
+                className="glass-panel max-w-md w-full p-8 relative z-10 flex flex-col items-center"
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+            >
+                <motion.div variants={itemVariants} className="w-16 h-16 bg-gradient-to-br from-purple-500 to-blue-600 rounded-2xl flex items-center justify-center mb-6 shadow-[0_0_40px_rgba(168,85,247,0.4)] border border-white/10">
                     <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
                     </svg>
-                </div>
+                </motion.div>
 
-                <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-blue-400 mb-2">SyncPlay</h1>
-                <p className="text-zinc-400 mb-8 text-center text-sm">Listen to music together with friends in real-time, no matter where you are.</p>
+                <motion.h1 variants={itemVariants} className="text-4xl font-black bg-clip-text text-transparent bg-gradient-to-br from-white via-purple-200 to-blue-200 mb-2 drop-shadow-sm font-display tracking-tight">SyncPlay</motion.h1>
+                <motion.p variants={itemVariants} className="text-zinc-400 mb-8 text-center text-sm">Listen to music together with friends in real-time, no matter where you are.</motion.p>
 
                 <div className="w-full space-y-4">
                     {/* Auth Section */}
                     {user ? (
-                        <div className="space-y-3">
-                            <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 flex items-center justify-between">
+                        <motion.div variants={itemVariants} className="space-y-3">
+                            <div className="bg-white/5 border border-white/10 rounded-xl p-4 flex items-center justify-between backdrop-blur-sm">
                                 <div className="flex items-center gap-3">
                                     {user.user_metadata?.avatar_url && (
-                                        <img src={user.user_metadata.avatar_url} alt="avatar" className="w-10 h-10 rounded-full bg-zinc-800" />
+                                        <img src={user.user_metadata.avatar_url} alt="avatar" className="w-10 h-10 rounded-full bg-zinc-800 border-2 border-white/10" />
                                     )}
                                     <div>
-                                        <p className="text-sm text-zinc-400">Signed in as</p>
-                                        <p className="text-white font-medium">{user.user_metadata?.full_name || user.email}</p>
+                                        <p className="text-xs text-zinc-400 font-medium uppercase tracking-wider">Signed in as</p>
+                                        <p className="text-white font-semibold">{user.user_metadata?.full_name || user.email}</p>
                                     </div>
                                 </div>
-                                <button onClick={handleSignOut} title="Sign Out" className="p-2 text-zinc-500 hover:text-red-400 transition-colors rounded-lg hover:bg-zinc-800">
+                                <button onClick={handleSignOut} title="Sign Out" className="p-2 text-zinc-400 hover:text-red-400 transition-colors rounded-lg hover:bg-white/5">
                                     <LogOut className="w-5 h-5" />
                                 </button>
                             </div>
 
                             {/* Favorite Rooms List */}
                             {favoriteRooms.length > 0 && (
-                                <div className="bg-zinc-900/30 border border-zinc-800/50 rounded-xl p-4">
+                                <div className="bg-white/5 border border-white/10 rounded-xl p-4 backdrop-blur-sm">
                                     <div className="flex items-center gap-2 mb-3">
                                         <Star className="w-4 h-4 text-yellow-500" fill="currentColor" />
-                                        <h3 className="text-sm font-semibold text-zinc-300">Favorite Rooms</h3>
+                                        <h3 className="text-sm font-semibold text-zinc-200">Favorite Rooms</h3>
                                     </div>
                                     <div className="grid grid-cols-2 gap-2">
                                         {favoriteRooms.map(room => (
@@ -121,19 +142,22 @@ function Home() {
                                                     setStoreUsername(user?.user_metadata?.full_name || 'Guest');
                                                     navigate(`/room/${room.room_id}`);
                                                 }}
-                                                className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg p-2.5 text-left transition-colors flex flex-col justify-center"
+                                                className="bg-zinc-900/50 hover:bg-white/10 border border-white/5 rounded-lg p-2.5 text-left transition-all flex flex-col justify-center group"
                                             >
-                                                <span className="font-mono text-white text-sm truncate">{room.room_id}</span>
+                                                <span className="font-mono text-zinc-300 group-hover:text-white text-sm truncate">{room.room_id}</span>
                                             </button>
                                         ))}
                                     </div>
                                 </div>
                             )}
-                        </div>
+                        </motion.div>
                     ) : (
-                        <button
+                        <motion.button
+                            variants={itemVariants}
                             onClick={handleGoogleLogin}
-                            className="w-full bg-white text-black hover:bg-zinc-200 font-semibold rounded-xl px-4 py-3 transition-colors flex items-center justify-center gap-3"
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            className="w-full bg-white text-black hover:bg-zinc-200 font-bold rounded-xl px-4 py-3.5 transition-all flex items-center justify-center gap-3 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
                         >
                             <svg className="w-5 h-5" viewBox="0 0 24 24">
                                 <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -142,77 +166,85 @@ function Home() {
                                 <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
                             </svg>
                             Continue with Google
-                        </button>
+                        </motion.button>
                     )}
 
                     {!user && (
-                        <div>
-                            <label className="block text-xs font-semibold text-zinc-400 uppercase mb-1 drop-shadow mt-4">Or continue as guest</label>
+                        <motion.div variants={itemVariants}>
+                            <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2 mt-6">Or continue as guest</label>
                             <input
                                 type="text"
                                 value={usernameInput}
                                 onChange={(e) => setUsernameInput(e.target.value)}
-                                className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all placeholder:text-zinc-600"
+                                className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50 transition-all placeholder:text-zinc-600 shadow-inner"
                                 placeholder="Enter a temporary name"
                             />
-                        </div>
+                        </motion.div>
                     )}
 
-                    <div className="pt-4 border-t border-zinc-800">
+                    <motion.div variants={itemVariants} className="pt-4 border-t border-white/10 mt-2">
                         {isInviteLink ? (
-                            <button
+                            <motion.button
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.98 }}
                                 onClick={handleJoinRoom}
-                                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl px-4 py-3 transition-colors flex items-center justify-center gap-2 group"
+                                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl px-4 py-3.5 transition-all flex items-center justify-center gap-2 group shadow-[0_0_20px_rgba(37,99,235,0.3)]"
                             >
                                 <LogIn className="w-5 h-5 group-hover:scale-110 transition-transform" />
                                 Join Room {roomIdToJoin}
-                            </button>
+                            </motion.button>
                         ) : (
-                            <button
+                            <motion.button
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.98 }}
                                 onClick={handleCreateRoom}
-                                className="w-full bg-purple-600 hover:bg-purple-500 text-white font-semibold rounded-xl px-4 py-3 transition-colors flex items-center justify-center gap-2 group"
+                                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold rounded-xl px-4 py-3.5 transition-all flex items-center justify-center gap-2 group shadow-[0_0_20px_rgba(147,51,234,0.3)]"
                             >
                                 <PlusCircle className="w-5 h-5 group-hover:scale-110 transition-transform" />
                                 Create New Room
-                            </button>
+                            </motion.button>
                         )}
-                    </div>
+                    </motion.div>
 
                     {!isInviteLink && (
-                        <>
-                            <div className="relative py-2 flex items-center">
-                                <div className="flex-grow border-t border-zinc-800"></div>
-                                <span className="flex-shrink-0 mx-4 text-zinc-500 text-xs uppercase font-medium">Or join existing</span>
-                                <div className="flex-grow border-t border-zinc-800"></div>
+                        <motion.div variants={itemVariants}>
+                            <div className="relative py-3 flex items-center">
+                                <div className="flex-grow border-t border-white/10"></div>
+                                <span className="flex-shrink-0 mx-4 text-zinc-500 text-[10px] tracking-widest uppercase font-bold">Or join existing</span>
+                                <div className="flex-grow border-t border-white/10"></div>
                             </div>
 
-                            <button
+                            <motion.button
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.98 }}
                                 onClick={() => navigate('/lobby')}
-                                className="w-full bg-zinc-800 hover:bg-zinc-700 text-white font-semibold rounded-xl px-4 py-3 transition-colors flex items-center justify-center gap-2 group"
+                                className="w-full bg-white/5 hover:bg-white/10 border border-white/10 text-white font-semibold rounded-xl px-4 py-3.5 transition-all flex items-center justify-center gap-2 group mb-3"
                             >
                                 <Compass className="w-5 h-5 group-hover:scale-110 transition-transform text-blue-400" />
                                 Browse Public Lobby
-                            </button>
+                            </motion.button>
 
                             <div className="flex gap-2">
                                 <input
                                     type="text"
                                     value={roomIdToJoin}
                                     onChange={(e) => setRoomIdToJoin(e.target.value)}
-                                    className="flex-1 bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all placeholder:text-zinc-600 font-mono"
+                                    className="flex-1 bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all placeholder:text-zinc-600 font-mono text-center tracking-widest uppercase shadow-inner"
                                     placeholder="ROOM CODE"
                                 />
-                                <button
+                                <motion.button
+                                    whileHover={{ scale: 1.05 }}
+                                    whileTap={{ scale: 0.95 }}
                                     onClick={handleJoinRoom}
-                                    className="bg-zinc-800 hover:bg-zinc-700 text-white font-semibold rounded-xl px-6 py-3 transition-colors flex items-center justify-center"
+                                    className="bg-white/10 hover:bg-white/20 border border-white/10 text-white font-semibold rounded-xl px-6 py-3 transition-colors flex items-center justify-center"
                                 >
                                     <LogIn className="w-5 h-5" />
-                                </button>
+                                </motion.button>
                             </div>
-                        </>
+                        </motion.div>
                     )}
                 </div>
-            </div>
+            </motion.div>
         </div>
     );
 }

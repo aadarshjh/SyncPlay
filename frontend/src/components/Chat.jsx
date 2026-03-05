@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { socket } from '../lib/socket';
 import { useRoomStore } from '../store/useRoomStore';
 
@@ -59,37 +60,44 @@ function Chat({ roomId }) {
     };
 
     return (
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col h-full bg-transparent">
             {/* Messages Area */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
                 {messages.length === 0 ? (
-                    <div className="h-full flex items-center justify-center text-zinc-500 text-sm italic">
+                    <div className="h-full flex flex-col items-center justify-center text-zinc-500 text-sm font-medium italic opacity-70">
                         No messages yet. Say hello!
                     </div>
                 ) : (
-                    messages.map((msg, i) => {
-                        const isMe = msg.username === username;
-                        return (
-                            <div key={i} className={`flex max-w-[85%] gap-2 ${isMe ? 'self-end ml-auto flex-row-reverse' : 'self-start mr-auto flex-row'}`}>
-                                <img
-                                    src={`https://api.dicebear.com/7.x/initials/svg?seed=${msg.username}&backgroundColor=5b21b6,4c1d95,7c3aed`}
-                                    alt={msg.username}
-                                    className="w-8 h-8 rounded-full shadow-sm mt-4 flex-shrink-0"
-                                />
-                                <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                                    <span className="text-xs text-zinc-500 mb-1 mx-1">{msg.username}</span>
-                                    <div
-                                        className={`px-4 py-2 rounded-2xl text-sm shadow-sm ${isMe
-                                            ? 'bg-purple-600 text-white rounded-tr-none'
-                                            : 'bg-zinc-800 text-zinc-200 border border-zinc-700/50 rounded-tl-none'
-                                            }`}
-                                    >
-                                        {msg.text}
+                    <AnimatePresence initial={false}>
+                        {messages.map((msg, i) => {
+                            const isMe = msg.username === username;
+                            return (
+                                <motion.div
+                                    key={i}
+                                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    className={`flex max-w-[85%] gap-2 ${isMe ? 'self-end ml-auto flex-row-reverse' : 'self-start mr-auto flex-row'}`}
+                                >
+                                    <img
+                                        src={`https://api.dicebear.com/7.x/initials/svg?seed=${msg.username}&backgroundColor=5b21b6,4c1d95,7c3aed`}
+                                        alt={msg.username}
+                                        className="w-8 h-8 rounded-full shadow-sm mt-4 flex-shrink-0 border border-white/10"
+                                    />
+                                    <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                                        <span className="text-[10px] uppercase tracking-widest font-bold text-zinc-500 mb-1 mx-1">{msg.username}</span>
+                                        <div
+                                            className={`px-4 py-2.5 rounded-2xl text-sm shadow-md ${isMe
+                                                ? 'bg-gradient-to-tr from-purple-600 to-blue-600 text-white rounded-tr-none border border-white/20'
+                                                : 'bg-black/40 backdrop-blur-md text-zinc-200 border border-white/10 rounded-tl-none'
+                                                }`}
+                                        >
+                                            {msg.text}
+                                        </div>
                                     </div>
-                                </div>
-                            </div>
-                        )
-                    })
+                                </motion.div>
+                            )
+                        })}
+                    </AnimatePresence>
                 )}
 
                 {/* Typing Indicator */}
@@ -110,21 +118,23 @@ function Chat({ roomId }) {
             </div>
 
             {/* Input Area */}
-            <div className="p-4 border-t border-zinc-800 bg-zinc-950">
-                <form onSubmit={sendMessage} className="relative flex items-center">
+            <div className="p-4 border-t border-white/10 bg-black/20 backdrop-blur-md">
+                <form onSubmit={sendMessage} className="relative flex items-center group">
                     <input
                         type="text"
                         value={inputMsg}
                         onChange={handleInputChange}
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded-full pl-4 pr-12 py-3 text-sm text-white focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all placeholder:text-zinc-600"
+                        className="w-full bg-black/50 backdrop-blur-sm border border-white/10 rounded-full pl-5 pr-12 py-3.5 text-sm text-white focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50 transition-all placeholder:text-zinc-500 shadow-inner"
                         placeholder="Type a message..."
                     />
-                    <button
+                    <motion.button
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
                         type="submit"
-                        className="absolute right-2 text-purple-500 hover:text-purple-400 p-2 rounded-full hover:bg-purple-500/10 transition-colors"
+                        className="absolute right-2 text-purple-400 hover:text-white p-2 rounded-full hover:bg-purple-500/20 transition-colors"
                     >
                         <Send className="w-5 h-5" />
-                    </button>
+                    </motion.button>
                 </form>
             </div>
         </div>
