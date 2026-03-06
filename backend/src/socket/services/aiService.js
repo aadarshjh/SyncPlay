@@ -38,7 +38,7 @@ export const generateNextSong = async (roomId, room, io) => {
         `;
 
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-pro',
+            model: 'gemini-1.5-flash',
             contents: prompt,
             config: {
                 responseMimeType: "application/json",
@@ -105,6 +105,20 @@ export const generateNextSong = async (roomId, room, io) => {
             });
         }
     } catch (err) {
-        console.error("[AI DJ Error]:", err);
+        console.error("[AI DJ Error]:", err?.message || err);
+
+        let errorMessage = "❌ AI DJ failed to generate the next song.";
+        if (err?.status === 429) {
+            errorMessage = "⚠️ AI DJ is currently unavailable (API Quota Exceeded for this region). Turning off Auto-Play.";
+            room.autoPlay = false;
+            io.to(roomId).emit('room_state', room);
+        }
+
+        io.to(roomId).emit('receive_message', {
+            id: Date.now().toString(),
+            username: 'System',
+            text: errorMessage,
+            timestamp: new Date()
+        });
     }
 };
